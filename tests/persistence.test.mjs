@@ -13,7 +13,8 @@ test('persistent storage encrypts keys, survives reopen and deletes image bytes'
 test('VPS activation is single-use; data is authenticated and HTTPS cookies survive restart',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'adstudio-')),storage=openStorage(dir,'b'.repeat(64));
  const env={APP_ORIGIN:'https://studio.example',SETUP_TOKEN:'c'.repeat(64)};
- const server=createAppServer({env,storage,authStore:storage.store('auth'),jobStore:storage.store('jobs')});
+ let providerCalls=0;
+ const server=createAppServer({env,storage,authStore:storage.store('auth'),jobStore:storage.store('jobs'),generate:async()=>{providerCalls++;return {mime:'image/png',base64:'iVBORw0KGgo='};}});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;
  const send=(path,body,cookie,method='POST')=>fetch(base+path,{method,headers:{Origin:env.APP_ORIGIN,'Content-Type':'application/json',...(cookie?{Cookie:cookie}:{})},...(body?{body:JSON.stringify(body)}:{})});
  try{
@@ -29,5 +30,14 @@ test('VPS activation is single-use; data is authenticated and HTTPS cookies surv
   assert.equal((await send('/api/data/images/test-image',null,cookie,'GET')).status,200);
   assert.equal((await send('/api/data/images/test-image',null,cookie,'DELETE')).status,200);
   assert.equal((await send('/api/data/images/test-image',null,cookie,'GET')).status,404);
+  const token='d'.repeat(64),input={token,provider:'gemini',model:'test-model',prompt:'test prompt',theme:'Test',width:336,height:280,count:1};
+  assert.equal((await send('/.netlify/functions/generate-background',input,cookie)).status,202);
+  for(let i=0;i<50&&storage.images().length===0;i++)await new Promise(r=>setTimeout(r,10));
+  assert.equal(storage.images()[0].prompt,'test prompt');assert.ok(storage.image(token+'-0'));
+  assert.equal((await send('/.netlify/functions/generate-background',input,cookie)).status,202);
+  await new Promise(r=>setTimeout(r,20));assert.equal(providerCalls,1);
+  assert.equal(storage.db.prepare("SELECT count(*) AS n FROM entries WHERE scope='jobs' AND key LIKE '%/image-%'").get().n,0);
+  assert.equal((await send('/api/data/images/'+token+'-0',null,cookie,'DELETE')).status,200);
+  assert.equal(await storage.store('jobs').get(token+'/image-0',{type:'arrayBuffer'}),null);
  }finally{await new Promise(r=>server.close(r));storage.close();await rm(dir,{recursive:true,force:true});}
 });
