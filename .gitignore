@@ -6,3 +6,7 @@ node_modules/
 dist/
 test-results/
 .tools/
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
