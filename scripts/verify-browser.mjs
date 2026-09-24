@@ -1,0 +1,64 @@
+// Set PLAYWRIGHT_MODULE to a Playwright module URL, or install playwright locally.
+import assert from 'node:assert/strict';
+import {mkdir} from 'node:fs/promises';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
+await mkdir('test-results',{recursive:true});
+const browser=await chromium.launch({headless:true,channel:process.env.BROWSER_CHANNEL||'msedge'});
+try {
+  const page=await browser.newPage({viewport:{width:1440,height:1000},acceptDownloads:true});
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto('http://localhost:8888');
+  await page.locator('#theme').fill('Café em uma cozinha iluminada');
+  await page.locator('#manage-prompts').click();
+  await page.locator('#new-prompt').click();
+  await page.locator('#prompt-name').fill('Teste de produto');
+  await page.locator('#prompt-content').fill('Fotografia macro de {{tema}} com fundo azul.');
+  await page.locator('#prompt-form button[type=submit], #prompt-form button.primary').click();
+  assert.equal(await page.locator('.prompt-card').count(),5);
+  await page.reload();await page.locator('[data-page=library]').first().click();
+  assert.equal(await page.locator('.prompt-card').count(),5);
+  await page.locator('.prompt-card').last().locator('[data-use]').click();
+  await page.locator('#theme').fill('Café');
+  assert.match(await page.locator('#prompt-preview').textContent(),/Fotografia macro de Café/);
+  await page.locator('#generate').click();
+  assert.equal(await page.locator('#page-settings').isVisible(),true);
+  await page.locator('#key-gemini').fill('test-key-never-real');
+  await page.locator('#settings-form button[type=submit]').click();
+  assert.equal(await page.evaluate(()=>JSON.stringify(localStorage).includes('test-key-never-real')),false);
+  assert.equal(await page.evaluate(()=>JSON.stringify(sessionStorage).includes('test-key-never-real')),false);
+  // All paid requests are intercepted. This checks the UI contract without real credentials.
+  let submitted;
+  const png=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=1200;c.height=800;const ctx=c.getContext('2d');const gradient=ctx.createLinearGradient(0,0,1200,800);gradient.addColorStop(0,'#3c537d');gradient.addColorStop(1,'#e4bd9b');ctx.fillStyle=gradient;ctx.fillRect(0,0,1200,800);ctx.fillStyle='#f8ecde';ctx.beginPath();ctx.arc(650,380,170,0,Math.PI*2);ctx.fill();return c.toDataURL('image/png').split(',')[1];});
+  await page.route('**/.netlify/functions/generate-background',async route=>{submitted=route.request().postDataJSON();await route.fulfill({status:202,body:''});});
+  await page.route('**/.netlify/functions/job*',async route=>{
+    if(new URL(route.request().url()).searchParams.has('image'))return route.fulfill({status:200,contentType:'image/png',body:Buffer.from(png,'base64')});
+    return route.fulfill({status:200,json:{status:'done',images:[{index:0,mime:'image/png'},{index:1,mime:'image/png'},{index:2,mime:'image/png'}],errors:[{index:3,message:'Limite de uso atingido.'}]}});
+  });
+  await page.locator('[data-page=generator]').first().click();
+  await page.locator('#quantity-options button').last().click();
+  await page.locator('#generate').click();
+  await page.waitForFunction(()=>document.querySelector('#results').children.length===3);
+  assert.equal(submitted.count,4);assert.equal(submitted.provider,'gemini');
+  await page.waitForFunction(()=>!document.querySelector('#generate').disabled);
+  assert.match(await page.locator('#generation-status').textContent(),/Limite de uso/);
+  await page.locator('#results [data-crop]').first().click();
+  await page.locator('#export-type').selectOption('image/png');
+  await page.locator('#crop-format').selectOption('1');
+  await page.locator('#crop-zoom').fill('1.8');await page.locator('#crop-x').fill('0.8');
+  await page.waitForFunction(()=>!document.querySelector('#download-crop').disabled);
+  const downloadPromise=page.waitForEvent('download');await page.locator('#download-crop').click();const download=await downloadPromise;
+  assert.match(download.suggestedFilename(),/300x250.*\.png$/);
+  const stream=await download.createReadStream();const chunks=[];for await(const chunk of stream)chunks.push(chunk);const bytes=Buffer.concat(chunks);assert.equal(bytes.readUInt32BE(16),300);assert.equal(bytes.readUInt32BE(20),250);
+  await page.screenshot({path:'test-results/crop.png',fullPage:true});
+  await page.locator('[data-close=crop-dialog]').click();
+  await page.reload();assert.equal(await page.locator('#gallery-count').textContent(),'3');
+  await page.locator('[data-page=settings]').click();assert.equal(await page.locator('#key-gemini').inputValue(),'');
+  await page.locator('[data-page=gallery]').click();await page.locator('#upload').setInputFiles({name:'sample.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});
+  await page.waitForFunction(()=>document.querySelector('#gallery-count').textContent==='4');
+  await page.locator('#gallery [data-remove]').first().click();await page.waitForFunction(()=>document.querySelector('#gallery-count').textContent==='3');
+  await page.setViewportSize({width:390,height:844});await page.locator('[data-page=generator]').first().click();
+  await page.screenshot({path:'test-results/mobile.png',fullPage:true});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  assert.deepEqual(errors,[]);
+  console.log('Browser PASS: prompt CRUD/persistence, key isolation, mocked 4-image batch with partial success, gallery persistence/import/delete, 300x250 PNG export, mobile layout.');
+} finally {await browser.close();}

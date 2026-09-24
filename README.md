@@ -1,0 +1,51 @@
+# AdStudio AI
+
+Estúdio de criativos para Google Ads e Meta: Gemini, OpenAI (ChatGPT) e Grok, biblioteca de prompts editável, 1–4 imagens por lote, galeria local e recorte com download em tamanho exato.
+
+## Executar localmente
+
+Requer Node.js 22 ou superior. Não é necessário instalar dependências para o servidor local:
+
+```sh
+node server.mjs
+```
+
+Abra http://localhost:8888. Em **Configurações**, informe a chave e o modelo da IA desejada, salve e volte a **Gerar criativos**. O uso real das APIs é cobrado pelo respectivo provedor. O servidor local mantém trabalhos temporários em memória.
+
+```sh
+node --test
+node scripts/build.mjs
+```
+
+## Publicar na Netlify
+
+1. Envie este projeto para um repositório Git e importe esse repositório na Netlify.
+2. A configuração `netlify.toml` define o comando `npm run build`, a pasta pública `dist` e as funções `netlify/functions`. A Netlify instala as dependências automaticamente.
+3. Use um plano/conta com **Background Functions** e **Netlify Blobs** habilitados. Não use apenas o upload estático de `dist`: as funções são necessárias para gerar imagens.
+4. Após publicar, abra o site, informe as chaves em Configurações e valide uma geração de cada provedor com acesso na sua conta.
+
+Não há chaves embutidas, variáveis de API obrigatórias ou chamadas pagas automáticas. As chaves ficam apenas na memória da aba e são enviadas na solicitação POST de geração. Não são salvas no localStorage, no IndexedDB ou nos Blobs pela aplicação. Os nomes dos modelos e os prompts ficam no localStorage. Configurações e galeria não sincronizam entre dispositivos.
+
+## Fluxo
+
+- A função `generate-background` executa um lote sequencial de até quatro chamadas, com timeout de três minutos por imagem. Um identificador aleatório de 256 bits dá acesso ao trabalho. Uma gravação condicional evita executar o mesmo lote duas vezes, inclusive nas repetições da plataforma.
+- O navegador consulta `job` e recupera imagens individualmente por respostas em streaming. Sucessos parciais ficam disponíveis quando outra imagem falha. O identificador do lote em andamento fica no sessionStorage para permitir acompanhamento ao recarregar a aba.
+- Imagens recebidas ficam no IndexedDB do navegador. Faça download para preservá-las fora desse navegador.
+- Os resultados no servidor expiram em 24 horas; a função agendada `cleanup` remove os objetos expirados diariamente (retenção física de até aproximadamente 48 horas). Ela só executa automaticamente no deploy de produção. Não armazena chaves nem prompts.
+- A geração usa uma proporção próxima aceita pela IA. O canvas faz o recorte e redimensionamento exato, com zoom e posição ajustáveis. Exportação em JPG, PNG e WebP; controle de qualidade nos formatos com perdas e indicação do peso final.
+- As dimensões são presets de trabalho, não uma garantia de aceitação do anúncio: revise o conteúdo e o limite de arquivo no posicionamento escolhido. O estilo “alto CTR” é uma direção criativa, sem promessa de desempenho.
+
+## Limites desta primeira versão
+
+- Workspace pessoal sem autenticação ou banco multiusuário. Cada visitante precisa fornecer sua própria chave. Não há chave de servidor compartilhada. Para lançar um SaaS público, adicionar login, isolamento por conta e limites de requisições/armazenamento antes de oferecer contas e cobrança.
+- Modelos são editáveis em Configurações: disponibilidade e permissão dependem da conta de API.
+- Chamadas reais e deploy precisam ser validados com credenciais do proprietário; os testes automatizados usam respostas simuladas.
+- Interrupção definitiva de uma função pode deixar um trabalho incompleto. A aplicação não repete chamadas pagas automaticamente. Confira o consumo no provedor antes de iniciar outro lote.
+
+## Referências das integrações
+
+- [OpenAI: geração de imagens](https://developers.openai.com/api/docs/guides/image-generation)
+- [Gemini: Generate Content para imagens](https://ai.google.dev/gemini-api/docs/generate-content/image-generation)
+- [Grok: geração de imagens](https://docs.x.ai/developers/model-capabilities/images/generation)
+- [Netlify: Background Functions](https://docs.netlify.com/build/functions/background-functions/)
+- [Netlify: Blobs](https://docs.netlify.com/build/data-and-storage/netlify-blobs/)

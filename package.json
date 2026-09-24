@@ -1,0 +1,9 @@
+{
+  "name": "adstudio-ai",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {"dev": "node server.mjs", "test": "node --test", "build": "node scripts/build.mjs"},
+  "dependencies": {"@netlify/blobs": "^10.0.0"},
+  "engines": {"node": ">=22"}
+}
