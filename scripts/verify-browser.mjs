@@ -1,13 +1,23 @@
 // Set PLAYWRIGHT_MODULE to a Playwright module URL, or install playwright locally.
 import assert from 'node:assert/strict';
 import {mkdir} from 'node:fs/promises';
+import {createAppServer} from '../server.mjs';
+import {hashPassword} from '../lib/auth.mjs';
+const testPassword='browser-test-only-password-2026';
+const appServer=createAppServer({env:{ADMIN_EMAIL:'test@example.test',ADMIN_PASSWORD_HASH:await hashPassword(testPassword)}});
+await new Promise(resolve=>appServer.listen(0,'127.0.0.1',resolve));
+const base=`http://127.0.0.1:${appServer.address().port}`;
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
 await mkdir('test-results',{recursive:true});
 const browser=await chromium.launch({headless:true,channel:process.env.BROWSER_CHANNEL||'msedge'});
 try {
   const page=await browser.newPage({viewport:{width:1440,height:1000},acceptDownloads:true});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.goto('http://localhost:8888');
+  await page.goto(base+'/');
+  await page.locator('#email').fill('test@example.test');
+  await page.locator('#password').fill(testPassword);
+  await page.locator('#login-button').click();
+  await page.waitForURL(base+'/studio');
   await page.locator('#theme').fill('Café em uma cozinha iluminada');
   await page.locator('#manage-prompts').click();
   await page.locator('#new-prompt').click();
@@ -61,4 +71,9 @@ try {
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   assert.deepEqual(errors,[]);
   console.log('Browser PASS: prompt CRUD/persistence, key isolation, mocked 4-image batch with partial success, gallery persistence/import/delete, 300x250 PNG export, mobile layout.');
-} finally {await browser.close();}
+  await page.locator('#logout').click();
+  await page.waitForURL(base+'/');
+  await page.goto(base+'/studio');
+  assert.equal(page.url(),base+'/');
+  console.log('Browser PASS: login, logout and protected studio redirect.');
+} finally {await browser.close();appServer.closeAllConnections();await new Promise(resolve=>appServer.close(resolve));}

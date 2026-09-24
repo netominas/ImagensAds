@@ -1,4 +1,4 @@
-import {getJobStore} from '../../lib/store.mjs';
+import {getJobStore,getAuthStore} from '../../lib/store.mjs';
 export default async function() {
   const store=await getJobStore();
   for await (const page of store.list({paginate:true})) {
@@ -10,6 +10,13 @@ export default async function() {
         for(let i=0;i<4;i++) await store.delete(`${prefix}image-${i}`);
         await store.delete(blob.key);
       }
+    }
+  }
+  const auth=await getAuthStore();
+  for await(const page of auth.list({paginate:true})){
+    for(const blob of page.blobs){
+      const record=await auth.get(blob.key,{type:'json'});
+      if(record?.expires<=Date.now())await auth.delete(blob.key);
     }
   }
 }

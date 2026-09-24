@@ -1,5 +1,22 @@
 import {providers,formats,presets,composePrompt,cropRect} from './core.js';
+import {requireAccess,secureFetch} from './access.js';
+const account=await requireAccess();
+if(!account)throw new Error('Sessão necessária.');
 const $=id=>document.getElementById(id);
+$('account-label').textContent=account.email;
+window.addEventListener('pageshow',event=>{if(event.persisted)location.reload();});
+window.addEventListener('storage',event=>{if(event.key==='adstudio-logout')location.replace('/');});
+window.addEventListener('focus',()=>{void requireAccess();});
+$('logout').onclick=async()=>{
+  $('logout').disabled=true;
+  try{
+    const response=await fetch('/api/logout',{method:'POST'});
+    if(!response.ok)throw new Error('Não foi possível encerrar a sessão. Tente novamente.');
+    keys={};
+    try{sessionStorage.removeItem('adstudio-active-job');localStorage.setItem('adstudio-logout',String(Date.now()));}catch{}
+    document.body.replaceChildren();location.replace('/');
+  }catch(error){toast(error.message);$('logout').disabled=false;}
+};
 const escapeHTML=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const read=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fallback;}catch{return fallback;}};
 let templates=read('adstudio-prompts',presets);
@@ -65,11 +82,11 @@ async function pollJob(job){
   let failedPolls=0;
   while(Date.now()-job.created<14*60*1000){
     try {
-      const res=await fetch('/.netlify/functions/job',{headers:{'x-job-token':job.token},signal:AbortSignal.timeout(20000)});
+      const res=await secureFetch('/.netlify/functions/job',{headers:{'x-job-token':job.token},signal:AbortSignal.timeout(20000)});
       if(!res.ok)throw new Error(res.status===410?'Esta geração expirou.':'Não foi possível consultar a geração.');
       const state=await res.json();failedPolls=0;
       for(const result of state.images||[])if(!received.has(result.index)){
-        const response=await fetch(`/.netlify/functions/job?image=${result.index}`,{headers:{'x-job-token':job.token},signal:AbortSignal.timeout(30000)});
+        const response=await secureFetch(`/.netlify/functions/job?image=${result.index}`,{headers:{'x-job-token':job.token},signal:AbortSignal.timeout(30000)});
         if(!response.ok)throw new Error('Não foi possível recuperar uma imagem.');
         const item=await addImage({id:`${job.token}-${result.index}`,jobToken:job.token,index:result.index,blob:await response.blob(),theme:job.theme,provider:job.provider,w:job.w,h:job.h,created:Date.now()});
         currentResults.push(item.id);received.add(result.index);renderImages();
@@ -85,6 +102,7 @@ async function pollJob(job){
 }
 $('generation-form').onsubmit=async e=>{
   e.preventDefault();if(busy)return;
+  if(!await requireAccess())return;
   try{const active=JSON.parse(sessionStorage.getItem('adstudio-active-job'));if(active&&Date.now()-active.created<14*60*1000){setBusy(true);try{await pollJob(active);}catch(e){status(e.message,true);}finally{setBusy(false);}return;}}catch{}
   if(!keys[provider]){page('settings');$(`key-${provider}`).focus();return toast('Insira a chave da IA selecionada.');}
   const {w,h}=dimensions();if(!validDimensions({w,h}))return toast('Use dimensões inteiras entre 32 e 4096 pixels.');

@@ -6,6 +6,8 @@
   NODE_VERSION = "22"
 [functions]
   node_bundler = "esbuild"
+[functions.studio]
+  included_files = ["private/studio.html"]
 [[headers]]
   for = "/*"
   [headers.values]

@@ -1,4 +1,5 @@
-import {getJobStore,json,validToken} from '../../lib/store.mjs';
+import {getJobStore,getAuthStore,json,validToken} from '../../lib/store.mjs';
+import {requireSession} from '../../lib/auth.mjs';
 export async function serveJob(request,store) {
   if(request.method!=='GET') return json({error:'Método não permitido.'},405);
   const token=request.headers.get('x-job-token');
@@ -17,4 +18,8 @@ export async function serveJob(request,store) {
   }
   return json(state);
 }
-export default async function(request) {return serveJob(request,await getJobStore());}
+export default async function(request) {
+  const denied=await requireSession(request,await getAuthStore());
+  if(denied)return denied;
+  return serveJob(request,await getJobStore());
+}
