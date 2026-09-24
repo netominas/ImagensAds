@@ -11,7 +11,7 @@ test('rejects invalid requests before billing',()=>{
 });
 test('provider payloads use fixed hosts and provider-specific parameters',()=>{
   const openai=providerRequest(input);assert.equal(openai.url,'https://api.openai.com/v1/images/generations');assert.equal(openai.body.n,1);assert.equal(openai.body.size,'1536x1024');assert.equal(openai.body.output_format,'jpeg');assert.equal(openai.headers.Authorization,'Bearer test-key-not-real');
-  const gemini=providerRequest({...input,provider:'gemini',model:'gemini-3.1-flash-image'});assert.equal(gemini.body.generationConfig.responseFormat.image.aspectRatio,'5:4');assert.equal(gemini.headers['x-goog-api-key'],input.apiKey);assert.equal(gemini.headers.Authorization,undefined);
+  const gemini=providerRequest({...input,provider:'gemini',model:'gemini-3.1-flash-image'});assert.equal(gemini.body.generationConfig.responseFormat.image.aspectRatio,'ASPECT_RATIO_FIVE_BY_FOUR');assert.equal(gemini.headers['x-goog-api-key'],input.apiKey);assert.equal(gemini.headers.Authorization,undefined);
   const grok=providerRequest({...input,provider:'grok'});assert.equal(grok.body.response_format,'b64_json');assert.equal(grok.body.aspect_ratio,'5:4');
 });
 test('Gemini extracts final image and skips thinking images',()=>{assert.deepEqual(extractImage('gemini',{candidates:[{content:{parts:[{thought:true,inlineData:{data:'thought'}},{inlineData:{data:'final',mimeType:'image/png'}}]}}]}),{base64:'final',mime:'image/png'});assert.throws(()=>extractImage('gemini',{candidates:[]}));});
