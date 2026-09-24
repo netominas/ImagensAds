@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validate,providerRequest,extractImage,generateOne,runJob} from '../lib/generation.mjs';
+import {validate,openaiSize,providerRequest,extractImage,generateOne,runJob} from '../lib/generation.mjs';
 import {memoryStore} from '../lib/memory-store.mjs';
 import {serveJob} from '../netlify/functions/job.mjs';
 import {composePrompt,cropRect,nearestRatio} from '../public/core.js';
@@ -10,7 +10,7 @@ test('rejects invalid requests before billing',()=>{
   assert.equal(validate(input),input);
 });
 test('provider payloads use fixed hosts and provider-specific parameters',()=>{
-  const openai=providerRequest(input);assert.equal(openai.url,'https://api.openai.com/v1/images/generations');assert.equal(openai.body.n,1);assert.equal(openai.body.size,'1536x1024');assert.equal(openai.body.output_format,'jpeg');assert.equal(openai.headers.Authorization,'Bearer test-key-not-real');
+  const openai=providerRequest(input);assert.equal(openai.url,'https://api.openai.com/v1/images/generations');assert.equal(openai.body.n,1);assert.equal(openai.body.size,'1152x960');assert.equal(openai.body.output_format,'jpeg');assert.equal(openai.headers.Authorization,'Bearer test-key-not-real');
   const gemini=providerRequest({...input,provider:'gemini',model:'gemini-3.1-flash-image'});assert.equal(gemini.body.generationConfig.responseFormat.image.aspectRatio,'ASPECT_RATIO_FIVE_BY_FOUR');assert.equal(gemini.headers['x-goog-api-key'],input.apiKey);assert.equal(gemini.headers.Authorization,undefined);
   const grok=providerRequest({...input,provider:'grok'});assert.equal(grok.body.response_format,'b64_json');assert.equal(grok.body.aspect_ratio,'5:4');
 });
@@ -38,4 +38,13 @@ test('crop stays in source bounds and matches output aspect for all positions',(
 });
 test('prompt templates substitute all placeholders and include output directions',()=>{
   const result=composePrompt('{{tema}}. {{tema}}','Café','Luz suave',336,280,false);assert.ok(result.includes('Café. Café'));assert.ok(result.includes('336 × 280'));assert.ok(result.includes('Não inclua textos'));assert.ok(composePrompt('Fotografia','Café','',300,250,true).includes('Tema: Café'));
+});
+
+test('OpenAI custom dimensions preserve ad ratios within API constraints',()=>{
+  for(const [w,h] of [[336,280],[300,250],[1080,1080],[1080,1350],[1080,1920],[300,600],[728,90],[32,4096],[4096,32],[1200,628]]){
+    const [ow,oh]=openaiSize('gpt-image-2.5-sunburst',w,h).split('x').map(Number);
+    assert.equal(ow%16,0);assert.equal(oh%16,0);assert.ok(ow*oh>=655360&&ow*oh<=1572864);assert.ok(ow<=3840&&oh<=3840);assert.ok(ow/oh>=1/3&&ow/oh<=3);
+    if(w===336||w===300||w===1080)assert.equal(ow/oh,w/h);
+  }
+  assert.equal(openaiSize('gpt-image-1',336,280),'1536x1024');
 });
