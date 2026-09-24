@@ -28,6 +28,11 @@ export function cropRect(iw, ih, w, h, zoom = 1, x = .5, y = .5) {
   const sw = w / scale, sh = h / scale;
   return {sx: (iw - sw) * x, sy: (ih - sh) * y, sw, sh};
 }
+export function imagePlacement(iw, ih, w, h, zoom = 1, x = .5, y = .5) {
+  const cover = Math.max(w / iw, h / ih);
+  const dw = iw * cover * zoom, dh = ih * cover * zoom;
+  return {dx:(w-dw)*x,dy:(h-dh)*y,dw,dh,fitZoom:Math.min(w/iw,h/ih)/cover};
+}
 export function nearestRatio(w, h) {
   return ['1:1','5:4','4:3','3:2','16:9','2:3','3:4','4:5','9:16'].reduce((a,b) => {
     const val = r => {const [x,y]=r.split(':').map(Number);return Math.abs(Math.log((w/h)/(x/y)));};
