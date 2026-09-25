@@ -1,12 +1,12 @@
 <!doctype html>
 <html lang="pt-BR">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f6f7fb"><title>AdStudio — Criativos com IA</title><link rel="stylesheet" href="/styles.css"><script type="module" src="/app.js"></script></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f6f7fb"><title>AdStudio — Agentes de IA</title><link rel="stylesheet" href="/styles.css"><script type="module" src="/app.js"></script></head>
 <body>
 <aside class="sidebar">
   <a class="brand" href="/"><span class="brand-mark">a<span>✦</span></span><span>adstudio<span class="brand-ai">AI</span></span></a>
-  <div class="workspace"><span class="workspace-icon">A</span><div>Meu workspace<small>Estúdio de criativos</small></div><span class="muted">⌄</span></div>
+  <div class="workspace"><span class="workspace-icon">A</span><div>Meu workspace<small>Central de agentes</small></div><span class="muted">⌄</span></div>
   <span class="nav-label">WORKSPACE</span>
-  <nav aria-label="Navegação principal"><button class="nav-item active" data-page="generator"><span>✦</span> Gerar criativos <span class="nav-new">NOVO</span></button><button class="nav-item" data-page="library"><span>▤</span> Biblioteca de prompts</button><button class="nav-item" data-page="gallery"><span>▧</span> Minhas imagens <span id="gallery-count" class="count">0</span></button><button class="nav-item" data-page="settings"><span>⚙</span> Configurações</button></nav>
+  <nav aria-label="Navegação principal"><button class="nav-item active" data-page="generator"><span>✦</span> Gerar criativos <span class="nav-new">NOVO</span></button><button class="nav-item" data-page="library"><span>▤</span> Prompts de imagem</button><button class="nav-item" data-page="gallery"><span>▧</span> Minhas imagens <span id="gallery-count" class="count">0</span></button><button class="nav-item" data-page="settings"><span>⚙</span> Configurações</button></nav>
   <div class="sidebar-bottom"><div class="mini-art">✧ <span>✦</span> ✧</div><strong>Da ideia ao próximo criativo.</strong><p>Explore estilos, teste variações e dê vida às suas campanhas.</p><span class="small-tag">GOOGLE ADS <i>+</i> META ADS</span></div>
   <div class="local-label"><span class="status-dot"></span> Seu estúdio, suas APIs</div>
 </aside>
@@ -35,3 +35,4 @@
 <dialog id="crop-dialog" class="crop-dialog"><div class="dialog-heading"><div><h2>O enquadramento faz a diferença.</h2><p>Ajuste o recorte e baixe no tamanho exato.</p></div><button class="icon-button" data-close="crop-dialog" aria-label="Fechar">×</button></div><div class="crop-layout"><div class="canvas-wrap"><canvas id="crop-canvas"></canvas></div><div class="crop-controls"><label for="crop-format">Formato de saída</label><select id="crop-format"></select><label for="crop-zoom">Zoom <span id="zoom-value">100%</span></label><input type="range" id="crop-zoom" min="0.001" max="3" step="0.001" value="1"><button id="fit-crop" type="button" class="button light">Mostrar imagem inteira</button><p class="hint">Reduza o zoom para evitar cortes. As áreas livres ficam brancas.</p><label for="crop-x">Posição horizontal</label><input type="range" id="crop-x" min="0" max="1" step="0.01" value="0.5"><label for="crop-y">Posição vertical</label><input type="range" id="crop-y" min="0" max="1" step="0.01" value="0.5"><button id="reset-crop" class="text-button">Restaurar enquadramento</button><label for="export-type">Tipo de arquivo</label><select id="export-type"><option value="image/jpeg">JPG</option><option value="image/png">PNG</option><option value="image/webp">WebP</option></select><label for="export-quality">Qualidade JPG / WebP <span id="quality-value">90%</span></label><input type="range" id="export-quality" min="0.1" max="1" step="0.01" value="0.9"><p id="export-info" class="hint"></p><button id="download-crop" class="button primary full">↓ Baixar imagem</button></div></div></dialog>
 <div id="toast" class="toast" role="status" hidden></div>
 </body></html>
+

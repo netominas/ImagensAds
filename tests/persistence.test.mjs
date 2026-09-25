@@ -23,6 +23,8 @@ test('VPS activation is single-use; data is authenticated and HTTPS cookies surv
   assert.equal((await send('/api/activate',{token:env.SETUP_TOKEN,email:'test@example.com',password:'a'.repeat(16)})).status,200);
   assert.equal((await send('/api/activate',{})).status,403);
   assert.equal((await fetch(base+'/api/data/images')).status,401);
+  assert.equal((await fetch(base+'/api/data/copies')).status,401);
+  assert.equal((await fetch(base+'/api/data/copy-config')).status,401);
   const login=await send('/api/login',{email:'test@example.com',password:'a'.repeat(16)});assert.equal(login.status,200);const cookie=login.headers.get('set-cookie');assert.match(cookie,/Secure/);
   assert.equal((await send('/api/data/settings',{keys:{gemini:'fake-key-123456'}},cookie,'PUT')).status,200);
   const settings=await send('/api/data/settings',null,cookie,'GET');const data=await settings.json();assert.equal(data.configuredKeys.gemini,true);assert.equal(JSON.stringify(data).includes('fake-key'),false);

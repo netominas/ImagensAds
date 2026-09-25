@@ -73,3 +73,10 @@ Para redefinir o acesso, gere um novo hash com o script em uma pasta local sem `
 - [Grok: geração de imagens](https://docs.x.ai/developers/model-capabilities/images/generation)
 - [Netlify: Background Functions](https://docs.netlify.com/build/functions/background-functions/)
 - [Netlify: Blobs](https://docs.netlify.com/build/data-and-storage/netlify-blobs/)
+
+## Central de agentes
+
+Na instalação VPS, a página inicial reúne o gerador de imagens e o gerador de copys. A biblioteca de textos inclui Facebook/Instagram, campanhas de pesquisa Google Ads, push e conteúdo personalizado. Prompts e modelos de texto são independentes dos prompts e modelos de imagem; as chaves de API são compartilhadas.
+
+Textos são gerados em segundo plano e armazenados no SQLite do servidor. O histórico permite abrir, editar, copiar, baixar TXT e excluir resultados. Pedidos interrompidos por reinício do servidor não são cobrados novamente por uma repetição automática. Os limites de tamanho dos anúncios são instruções para a IA e devem ser revisados antes da publicação.
+

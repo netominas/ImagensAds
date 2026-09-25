@@ -4,15 +4,17 @@ import {Readable} from 'node:stream';
 import {fileURLToPath} from 'node:url';
 import {runJob,validate} from './lib/generation.mjs';
 import {dataAPI} from './lib/data-api.mjs';
+import {createCopyAPI} from './lib/copy-api.mjs';
 import {hashPassword,authSettings} from './lib/auth.mjs';
 import {timingSafeEqual} from 'node:crypto';
 import {memoryStore} from './lib/memory-store.mjs';
 import {serveJob} from './netlify/functions/job.mjs';
 import {login,logout,sessionStatus,requireSession,sameOrigin,authJSON} from './lib/auth.mjs';
 
-export function createAppServer({env=process.env,authStore=memoryStore(),jobStore=memoryStore(),generate,storage}={}){
+export function createAppServer({env=process.env,authStore=memoryStore(),jobStore=memoryStore(),generate,generateText,storage}={}){
+  const copyAPI=storage?createCopyAPI(storage,generateText):null;
   let activeJobs=0;
-  const allowed=new Set(['index.html','app.js','core.js','styles.css','login.js','login.css','access.js','activate.html','activate.js']);
+  const allowed=new Set(['index.html','app.js','core.js','styles.css','login.js','login.css','access.js','activate.html','activate.js','copy.js','copy-core.js','copy.css']);
   return createServer(async(req,res)=>{
     const send=response=>{
       res.writeHead(response.status,Object.fromEntries(response.headers));
@@ -46,7 +48,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
         Object.assign(env,admin);delete env.SETUP_TOKEN;
         return send(authJSON({ok:true}));
       }
-      if(isData)return send(await dataAPI(request,storage));
+      if(isData)return send(await (url.pathname.startsWith('/api/data/cop')?copyAPI(request):dataAPI(request,storage)));
       if(['/api/login','/.netlify/functions/login'].includes(url.pathname))return send(await login(request,authStore,{env,ip:req.socket.remoteAddress}));
       if(['/api/logout','/.netlify/functions/logout'].includes(url.pathname))return send(await logout(request,authStore));
       if(['/api/session','/.netlify/functions/session'].includes(url.pathname))return send(await sessionStatus(request,authStore,env));
