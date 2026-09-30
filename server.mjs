@@ -14,7 +14,7 @@ import {login,logout,sessionStatus,requireSession,sameOrigin,authJSON} from './l
 export function createAppServer({env=process.env,authStore=memoryStore(),jobStore=memoryStore(),generate,generateText,storage}={}){
   const copyAPI=storage?createCopyAPI(storage,generateText):null;
   let activeJobs=0;
-  const allowed=new Set(['index.html','app.js','core.js','styles.css','login.js','login.css','access.js','activate.html','activate.js','copy.js','copy-core.js','copy.css']);
+  const allowed=new Set(['index.html','app.js','core.js','styles.css','login.js','login.css','access.js','activate.html','activate.js','copy.js','copy-core.js','copy.css','favicon.svg']);
   return createServer(async(req,res)=>{
     const send=response=>{
       res.writeHead(response.status,Object.fromEntries(response.headers));
@@ -80,7 +80,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       }
       const file=url.pathname==='/'?'index.html':url.pathname.slice(1);
       if(!allowed.has(file)){res.writeHead(404).end('Not found');return;}
-      res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','Cache-Control':'no-store'}).end(await readFile(new URL(`./public/${file}`,import.meta.url)));
+      res.writeHead(200,{'Content-Type':file.endsWith('.svg')?'image/svg+xml':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','Cache-Control':'no-store'}).end(await readFile(new URL(`./public/${file}`,import.meta.url)));
     }catch{if(!res.headersSent)res.writeHead(500);res.end('Erro interno.');}
   });
 }
