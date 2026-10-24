@@ -1,16 +1,16 @@
 import {providers,formats,presets,composePrompt,imagePlacement} from './core.js';
-import {requireAccess,secureFetch} from './access.js';
+import {requireAccess,secureFetch} from '/access.js';
 import {mountAgents,initCopies} from './copy.js';
 mountAgents();
 const account=await requireAccess();
 if(!account)throw new Error('Sessão necessária.');
 const $=id=>document.getElementById(id);
-const storageResponse=await secureFetch('/api/data/settings');
+const storageResponse=await secureFetch('/apps/criativos/api/data/settings');
 const remote=storageResponse.ok;
 if(!remote&&storageResponse.status!==404)throw new Error('Não foi possível carregar os dados do servidor.');
 const serverSettings=remote?await storageResponse.json():null;
 let configuredKeys=serverSettings?.configuredKeys||{};
-async function api(path,method='GET',body){const response=await secureFetch('/api/data/'+path,{method,...(body?{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});if(!response.ok){let data;try{data=await response.json();}catch{}throw new Error(data?.error||'Não foi possível salvar no servidor.');}return response.json();}
+async function api(path,method='GET',body){const response=await secureFetch('/apps/criativos/api/data/'+path,{method,...(body?{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});if(!response.ok){let data;try{data=await response.json();}catch{}throw new Error(data?.error||'Não foi possível salvar no servidor.');}return response.json();}
 if(remote){document.querySelector('#page-gallery .page-heading p').textContent='Imagens armazenadas na sua conta. Acesse, recorte e baixe em qualquer dispositivo.';document.querySelector('#page-settings .info-banner').textContent='As chaves são armazenadas criptografadas no servidor e usadas apenas para chamar a IA selecionada. Campos vazios preservam a chave salva.';}
 $('account-label').textContent=account.email;
 window.addEventListener('pageshow',event=>{if(event.persisted)location.reload();});
@@ -33,7 +33,7 @@ if(!Array.isArray(templates)||!templates.length||templates.some(p=>!p.id||typeof
 let models=serverSettings?.models||read('adstudio-models',{}),keys={},provider='gemini',count=1,images=[],currentResults=[],busy=false,editingId=null,cropImage=null,cropItem=null,exportBlob=null,exportVersion=0;
 const toast=message=>{$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('toast').hidden=true,4500);};
 async function saveLocal(key,value){try{if(remote){await api('settings','PUT',{[key==='adstudio-prompts'?'templates':'models']:value});return true;}localStorage.setItem(key,JSON.stringify(value));return true;}catch{toast('Não foi possível salvar. Verifique a conexão e tente novamente.');return false;}}
-function page(name){document.querySelectorAll('.page').forEach(el=>el.hidden=el.id!==`page-${name}`);document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.page===name));$('breadcrumb').textContent={home:'Central de agentes',copy:'Gerador de copys','copy-library':'Prompts de texto','copy-history':'Histórico de textos',generator:'Gerar criativos',library:'Prompts de imagem',gallery:'Minhas imagens',settings:'Configurações'}[name];window.scrollTo({top:0,behavior:'smooth'});}
+function page(name){document.querySelectorAll('.page').forEach(el=>el.hidden=el.id!==`page-${name}`);document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.page===name));$('breadcrumb').textContent={home:'Estúdio de criativos',copy:'Gerador de copys','copy-library':'Prompts de texto','copy-history':'Histórico de textos',generator:'Gerar criativos',library:'Prompts de imagem',gallery:'Minhas imagens',settings:'Configurações'}[name];window.scrollTo({top:0,behavior:'smooth'});}
 document.querySelectorAll('[data-page]').forEach(el=>el.addEventListener('click',()=>page(el.dataset.page)));
 $('open-settings').onclick=()=>page('settings');$('manage-prompts').onclick=()=>page('library');
 document.querySelectorAll('[data-close]').forEach(el=>el.onclick=()=>$(el.dataset.close).close());
@@ -73,8 +73,8 @@ function renderCount(){$('quantity-options').innerHTML=[1,2,3,4].map(n=>`<button
 const dbPromise=remote?null:new Promise((resolve,reject)=>{const req=indexedDB.open('adstudio-images',1);req.onupgradeneeded=()=>req.result.createObjectStore('images',{keyPath:'id'});req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});
 async function dbAction(mode,action){const db=await dbPromise;return new Promise((resolve,reject)=>{const tx=db.transaction('images',mode);const req=action(tx.objectStore('images'));tx.oncomplete=()=>resolve(req.result);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}
 function hydrate(item){return {...item,url:URL.createObjectURL(item.blob)};}
-async function addImage(item){if(remote){const base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=reject;reader.readAsDataURL(item.blob);});const meta=await api('images','POST',{id:item.id,theme:item.theme,mime:item.blob.type,base64});const saved={...meta,url:'/api/data/images/'+meta.id};images.unshift(saved);renderImages();return saved;}try{await dbAction('readwrite',s=>s.put(item));}catch{toast('Imagem disponível nesta sessão, mas sem espaço para salvar no navegador. Baixe agora.');}const hydrated=hydrate(item);images.unshift(hydrated);renderImages();return hydrated;}
-async function loadImages(){try{if(remote){images=(await api('images')).map(item=>({...item,url:'/api/data/images/'+item.id}));renderImages();return;}images=(await dbAction('readonly',s=>s.getAll())).sort((a,b)=>b.created-a.created).map(hydrate);renderImages();}catch{toast('Não foi possível carregar a galeria. Recarregue para tentar novamente.');}}await loadImages();
+async function addImage(item){if(remote){const base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=reject;reader.readAsDataURL(item.blob);});const meta=await api('images','POST',{id:item.id,theme:item.theme,mime:item.blob.type,base64});const saved={...meta,url:'/apps/criativos/api/data/images/'+meta.id};images.unshift(saved);renderImages();return saved;}try{await dbAction('readwrite',s=>s.put(item));}catch{toast('Imagem disponível nesta sessão, mas sem espaço para salvar no navegador. Baixe agora.');}const hydrated=hydrate(item);images.unshift(hydrated);renderImages();return hydrated;}
+async function loadImages(){try{if(remote){images=(await api('images')).map(item=>({...item,url:'/apps/criativos/api/data/images/'+item.id}));renderImages();return;}images=(await dbAction('readonly',s=>s.getAll())).sort((a,b)=>b.created-a.created).map(hydrate);renderImages();}catch{toast('Não foi possível carregar a galeria. Recarregue para tentar novamente.');}}await loadImages();
 function card(item){return `<article class="image-card"><img src="${item.url}" alt="${escapeHTML(item.theme)}" loading="lazy"><div class="image-card-body"><strong>${escapeHTML(item.theme)}</strong><p>${escapeHTML(providers[item.provider]?.name||'Importada')} · ${item.w} × ${item.h} px · ${new Date(item.created).toLocaleDateString('pt-BR')}</p>${item.prompt?`<details><summary>Ver prompt e modelo</summary><p>${escapeHTML(item.model||'')}</p><p style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHTML(item.prompt)}</p></details>`:''}<div class="image-actions">${remote?`<a class="button light" href="${item.url}?download=1">Baixar original</a>`:""}<button class="button light" data-crop="${item.id}">⌗ Recortar e baixar</button><button class="icon-button" data-remove="${item.id}" aria-label="Excluir imagem">×</button></div></div></article>`;}
 function renderImages(){
   $('gallery-count').textContent=images.length;$('result-count').textContent=currentResults.length;$('gallery-empty').hidden=images.length>0;
@@ -93,12 +93,12 @@ async function pollJob(job){
   let failedPolls=0;
   while(Date.now()-job.created<14*60*1000){
     try {
-      const res=await secureFetch('/.netlify/functions/job',{headers:{'x-job-token':job.token},signal:AbortSignal.timeout(20000)});
+      const res=await secureFetch('/apps/criativos/api/job',{headers:{'x-job-token':job.token},signal:AbortSignal.timeout(20000)});
       if(!res.ok)throw new Error(res.status===410?'Esta geração expirou.':'Não foi possível consultar a geração.');
       const state=await res.json();failedPolls=0;
       if(remote){await loadImages();for(const item of images.filter(i=>i.jobToken===job.token)){received.add(item.index);if(!currentResults.includes(item.id))currentResults.push(item.id);}renderImages();}
       for(const result of state.images||[])if(!remote&&!received.has(result.index)){
-        const response=await secureFetch(`/.netlify/functions/job?image=${result.index}`,{headers:{'x-job-token':job.token},signal:AbortSignal.timeout(30000)});
+        const response=await secureFetch(`/apps/criativos/api/job?image=${result.index}`,{headers:{'x-job-token':job.token},signal:AbortSignal.timeout(30000)});
         if(!response.ok)throw new Error('Não foi possível recuperar uma imagem.');
         const item=await addImage({id:`${job.token}-${result.index}`,jobToken:job.token,index:result.index,blob:await response.blob(),theme:job.theme,provider:job.provider,w:job.w,h:job.h,created:Date.now()});
         currentResults.push(item.id);received.add(result.index);renderImages();
@@ -124,7 +124,7 @@ $('generation-form').onsubmit=async e=>{
   setBusy(true);currentResults=[];renderImages();status('Enviando seu briefing para a IA…');
   try{
     sessionStorage.setItem('adstudio-active-job',JSON.stringify(job));
-    const res=await fetch('/.netlify/functions/generate-background',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:job.token,theme:job.theme,provider,model:models[provider]||providers[provider].model,apiKey:keys[provider],prompt:$('prompt-preview').textContent,width:w,height:h,count}),signal:AbortSignal.timeout(20000)});
+    const res=await fetch('/apps/criativos/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:job.token,theme:job.theme,provider,model:models[provider]||providers[provider].model,apiKey:keys[provider],prompt:$('prompt-preview').textContent,width:w,height:h,count}),signal:AbortSignal.timeout(20000)});
     if(res.status!==202){if(res.status>=400&&res.status<500)sessionStorage.removeItem('adstudio-active-job');let data;try{data=await res.json();}catch{}throw new Error(data?.error||`Não foi possível confirmar o início da geração (HTTP ${res.status}).`);}
     await pollJob(job);
   }catch(e){status(`${e.message} Se o envio já começou, clique em Gerar para retomar o acompanhamento do mesmo lote.`,true);}finally{setBusy(false);}

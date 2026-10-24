@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {openStorage} from '../lib/persistent.mjs';
 import {createCopyAPI} from '../lib/copy-api.mjs';
 import {generateCopy,textRequest} from '../lib/copy-generation.mjs';
-import {composeCopy,copyPresets} from '../public/copy-core.js';
+import {composeCopy,copyPresets} from '../apps/criativos/public/copy-core.js';
 test('copy providers extract final text and hide provider errors',async()=>{
  for(const [provider,data] of Object.entries({openai:{output:[{type:'message',content:[{type:'output_text',text:'Olá'}]}]},gemini:{candidates:[{content:{parts:[{thought:true,text:'hidden'},{text:'Olá'}]}}]},grok:{choices:[{message:{content:'Olá'}}]}})){
  const input={provider,model:'test-model',prompt:'Teste',apiKey:'secret'};

@@ -25,11 +25,14 @@ test('VPS activation is single-use; data is authenticated and HTTPS cookies surv
   assert.equal((await fetch(base+'/api/data/images')).status,401);
   assert.equal((await fetch(base+'/api/data/copies')).status,401);
   assert.equal((await fetch(base+'/api/data/copy-config')).status,401);
+  assert.equal((await fetch(base+'/apps/criativos/api/data/copy-config')).status,401);
   const login=await send('/api/login',{email:'test@example.com',password:'a'.repeat(16)});assert.equal(login.status,200);const cookie=login.headers.get('set-cookie');assert.match(cookie,/Secure/);
   assert.equal((await send('/api/data/settings',{keys:{gemini:'fake-key-123456'}},cookie,'PUT')).status,200);
   const settings=await send('/api/data/settings',null,cookie,'GET');const data=await settings.json();assert.equal(data.configuredKeys.gemini,true);assert.equal(JSON.stringify(data).includes('fake-key'),false);
+  const nested=await send('/apps/criativos/api/data/settings',null,cookie,'GET');assert.deepEqual(await nested.json(),data);
   const uploaded=await send('/api/data/images',{id:'test-image',mime:'image/png',base64:'AQID',theme:'test'},cookie);assert.equal(uploaded.status,201);
   assert.equal((await send('/api/data/images/test-image',null,cookie,'GET')).status,200);
+  assert.equal((await send('/apps/criativos/api/data/images/test-image',null,cookie,'GET')).status,200);
   assert.equal((await send('/api/data/images/test-image',null,cookie,'DELETE')).status,200);
   assert.equal((await send('/api/data/images/test-image',null,cookie,'GET')).status,404);
   const token='d'.repeat(64),input={token,provider:'gemini',model:'test-model',prompt:'test prompt',theme:'Test',width:336,height:280,count:1};

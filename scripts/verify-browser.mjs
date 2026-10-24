@@ -17,7 +17,10 @@ try {
   await page.locator('#email').fill('test@example.test');
   await page.locator('#password').fill(testPassword);
   await page.locator('#login-button').click();
-  await page.waitForURL(base+'/studio');
+  await page.waitForURL(base+'/');
+  await page.getByRole('link',{name:'Abrir Estúdio de criativos'}).click();
+  await page.waitForURL(base+'/apps/criativos/');
+  await page.locator('[data-page=generator]').first().click();
   await page.locator('#theme').fill('Café em uma cozinha iluminada');
   await page.locator('#manage-prompts').click();
   await page.locator('#new-prompt').click();
@@ -39,8 +42,8 @@ try {
   // All paid requests are intercepted. This checks the UI contract without real credentials.
   let submitted;
   const png=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=1200;c.height=800;const ctx=c.getContext('2d');const gradient=ctx.createLinearGradient(0,0,1200,800);gradient.addColorStop(0,'#3c537d');gradient.addColorStop(1,'#e4bd9b');ctx.fillStyle=gradient;ctx.fillRect(0,0,1200,800);ctx.fillStyle='#f8ecde';ctx.beginPath();ctx.arc(650,380,170,0,Math.PI*2);ctx.fill();return c.toDataURL('image/png').split(',')[1];});
-  await page.route('**/.netlify/functions/generate-background',async route=>{submitted=route.request().postDataJSON();await route.fulfill({status:202,body:''});});
-  await page.route('**/.netlify/functions/job*',async route=>{
+  await page.route('**/apps/criativos/api/generate',async route=>{submitted=route.request().postDataJSON();await route.fulfill({status:202,body:''});});
+  await page.route('**/apps/criativos/api/job*',async route=>{
     if(new URL(route.request().url()).searchParams.has('image'))return route.fulfill({status:200,contentType:'image/png',body:Buffer.from(png,'base64')});
     return route.fulfill({status:200,json:{status:'done',images:[{index:0,mime:'image/png'},{index:1,mime:'image/png'},{index:2,mime:'image/png'}],errors:[{index:3,message:'Limite de uso atingido.'}]}});
   });
@@ -73,7 +76,7 @@ try {
   console.log('Browser PASS: prompt CRUD/persistence, key isolation, mocked 4-image batch with partial success, gallery persistence/import/delete, 300x250 PNG export, mobile layout.');
   await page.locator('#logout').click();
   await page.waitForURL(base+'/');
-  await page.goto(base+'/studio');
+  await page.goto(base+'/apps/criativos/');
   assert.equal(page.url(),base+'/');
   console.log('Browser PASS: login, logout and protected studio redirect.');
 } finally {await browser.close();appServer.closeAllConnections();await new Promise(resolve=>appServer.close(resolve));}

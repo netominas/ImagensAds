@@ -1,4 +1,10 @@
-# AdStudio AI
+# AK Workspace
+
+Painel de aplicações com autenticação compartilhada. Na VPS, `/` abre o dashboard após o login e `/apps/criativos/` abre o estúdio de imagens e copys. O endereço antigo `/studio` redireciona para o estúdio. Os cartões de análise de relatórios e criação de campanhas são aplicações planejadas.
+
+Os arquivos do estúdio ficam em `apps/criativos/public/` e `apps/criativos/private/`. O servidor entrega apenas os arquivos públicos autorizados; o HTML privado requer sessão. As APIs do estúdio usam `/apps/criativos/api/`, com os endereços antigos preservados por compatibilidade. Autenticação, persistência e configuração do processo continuam compartilhadas. A pasta persistente e a chave de criptografia permanecem fora do código, preservando as chaves de API e o histórico durante atualizações.
+
+O dashboard completo é servido por `server.mjs` na VPS. A configuração Netlify abaixo documenta a implantação anterior e não oferece o novo painel completo.
 
 Estúdio de criativos para Google Ads e Meta: Gemini, OpenAI (ChatGPT) e Grok, biblioteca de prompts editável, 1–4 imagens por lote, galeria local e recorte com download em tamanho exato.
 

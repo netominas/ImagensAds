@@ -14,7 +14,8 @@ import {login,logout,sessionStatus,requireSession,sameOrigin,authJSON} from './l
 export function createAppServer({env=process.env,authStore=memoryStore(),jobStore=memoryStore(),generate,generateText,storage}={}){
   const copyAPI=storage?createCopyAPI(storage,generateText):null;
   let activeJobs=0;
-  const allowed=new Set(['index.html','app.js','core.js','styles.css','login.js','login.css','access.js','activate.html','activate.js','copy.js','copy-core.js','copy.css','favicon.svg']);
+  const allowed=new Set(['index.html','login.js','login.css','access.js','activate.html','activate.js','favicon.svg','dashboard.js','dashboard.css']);
+  const creativeAssets=new Set(['app.js','core.js','styles.css','copy.js','copy-core.js','copy.css']);
   return createServer(async(req,res)=>{
     const send=response=>{
       res.writeHead(response.status,Object.fromEntries(response.headers));
@@ -24,6 +25,20 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');res.setHeader('Referrer-Policy','no-referrer');
       res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
       const origin=env.APP_ORIGIN||`http://${req.headers.host}`,url=new URL(req.url,origin);
+      const originalPath=url.pathname;
+      const redirect=location=>new Response(null,{status:303,headers:{Location:location,'Cache-Control':'no-store'}});
+      if(['/', '/dashboard', '/apps/criativos', '/apps/criativos/', '/studio', '/.netlify/functions/studio'].includes(originalPath)){
+        const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);
+        if(denied)return send(redirect('/login'));
+        if(originalPath==='/dashboard')return send(redirect('/'));
+        if(['/studio','/.netlify/functions/studio','/apps/criativos'].includes(originalPath))return send(redirect('/apps/criativos/'));
+        const file=originalPath==='/'?'./private/dashboard.html':'./apps/criativos/private/studio.html';
+        return send(new Response(await readFile(new URL(file,import.meta.url)),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store','Vary':'Cookie'}}));
+      }
+      // New application routes share authentication and storage with the platform.
+      if(originalPath.startsWith('/apps/criativos/api/data/'))url.pathname=originalPath.slice('/apps/criativos'.length);
+      if(originalPath==='/apps/criativos/api/generate')url.pathname='/.netlify/functions/generate-background';
+      if(originalPath==='/apps/criativos/api/job')url.pathname='/.netlify/functions/job';
       const isData=url.pathname.startsWith('/api/data/');
       if(isData){
         if(!storage)return send(authJSON({error:'Não encontrado.'},404));
@@ -52,13 +67,11 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       if(['/api/login','/.netlify/functions/login'].includes(url.pathname))return send(await login(request,authStore,{env,ip:req.socket.remoteAddress}));
       if(['/api/logout','/.netlify/functions/logout'].includes(url.pathname))return send(await logout(request,authStore));
       if(['/api/session','/.netlify/functions/session'].includes(url.pathname))return send(await sessionStatus(request,authStore,env));
-      if(['/studio','/.netlify/functions/studio','/.netlify/functions/job','/.netlify/functions/generate-background'].includes(url.pathname)){
+      if(['/.netlify/functions/job','/.netlify/functions/generate-background'].includes(url.pathname)){
         const denied=await requireSession(request,authStore,env);
         if(denied){
-          if(url.pathname.endsWith('studio'))return send(new Response(null,{status:303,headers:{Location:'/','Cache-Control':'no-store'}}));
           return send(denied);
         }
-        if(url.pathname.endsWith('studio'))return send(new Response(await readFile(new URL('./private/studio.html',import.meta.url)),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store','Vary':'Cookie'}}));
         if(url.pathname.endsWith('/job'))return send(await serveJob(request,jobStore));
         if(req.method!=='POST')return send(authJSON({error:'Método não permitido.'},405));
         if(!sameOrigin(request))return send(authJSON({error:'Origem não permitida.'},403));
@@ -78,7 +91,9 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
         runJob(input,outputStore,generate).catch(()=>console.error('Falha na execução da geração.')).finally(()=>activeJobs--);
         return;
       }
-      const file=url.pathname==='/'?'index.html':url.pathname.slice(1);
+      const asset=originalPath.startsWith('/apps/criativos/')?originalPath.slice('/apps/criativos/'.length):originalPath.slice(1);
+      if(creativeAssets.has(asset))return send(new Response(await readFile(new URL('./apps/criativos/public/'+asset,import.meta.url)),{headers:{'Content-Type':asset.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8','Cache-Control':'no-store'}}));
+      const file=url.pathname==='/login'?'index.html':url.pathname.slice(1);
       if(!allowed.has(file)){res.writeHead(404).end('Not found');return;}
       res.writeHead(200,{'Content-Type':file.endsWith('.svg')?'image/svg+xml':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','Cache-Control':'no-store'}).end(await readFile(new URL(`./public/${file}`,import.meta.url)));
     }catch{if(!res.headersSent)res.writeHead(500);res.end('Erro interno.');}

@@ -7,7 +7,7 @@
 [functions]
   node_bundler = "esbuild"
 [functions.studio]
-  included_files = ["private/studio.html"]
+  included_files = ["apps/criativos/private/studio.html"]
 [[headers]]
   for = "/*"
   [headers.values]

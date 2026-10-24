@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {validate,openaiSize,providerRequest,extractImage,generateOne,runJob} from '../lib/generation.mjs';
 import {memoryStore} from '../lib/memory-store.mjs';
 import {serveJob} from '../netlify/functions/job.mjs';
-import {composePrompt,cropRect,nearestRatio} from '../public/core.js';
+import {composePrompt,cropRect,nearestRatio} from '../apps/criativos/public/core.js';
 const input={provider:'openai',apiKey:'test-key-not-real',model:'gpt-image-2.5-sunburst',prompt:'A landscape',width:336,height:280,count:4,token:'a'.repeat(64)};
 test('rejects invalid requests before billing',()=>{
   for(const patch of [{count:0},{count:5},{count:1.5},{width:0},{height:4097},{provider:'unknown'},{provider:'constructor'},{model:'../invalid'},{apiKey:'a'},{token:'bad'},{prompt:''}])assert.throws(()=>validate({...input,...patch}));

@@ -15,13 +15,13 @@ form.onsubmit=async event=>{
     const response=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('email').value.trim(),password:password.value}),signal:AbortSignal.timeout(20000)});
     let data;try{data=await response.json();}catch{}
     if(!response.ok)throw new Error(response.status===429?'Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.':data?.error||'Não foi possível entrar. Tente novamente.');
-    password.value='';location.replace('/studio');
+    password.value='';location.replace('/');
   }catch(error){showMessage(error.name==='TimeoutError'?'O servidor demorou para responder. Tente novamente.':error.message);}
-  finally{button.disabled=false;button.textContent='Entrar no estúdio →';}
+  finally{button.disabled=false;button.textContent='Entrar no painel →';}
 };
 try{
   const response=await fetch('/api/session',{cache:'no-store',signal:AbortSignal.timeout(15000)});
   const data=await response.json();
-  if(data.authenticated)location.replace('/studio');
-  else if(data.configured===false)showMessage('O acesso está protegido. O administrador ainda precisa configurar o e-mail e a senha na Netlify.');
+  if(data.authenticated)location.replace('/');
+  else if(data.configured===false)showMessage('O acesso está protegido. O administrador ainda precisa configurar o e-mail e a senha no servidor.');
 }catch{showMessage('Não foi possível verificar o acesso agora. Você pode tentar entrar abaixo.');}

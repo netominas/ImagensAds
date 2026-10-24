@@ -64,20 +64,27 @@ test('HTTP server protects studio, direct function URLs and generation before pr
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const base=`http://127.0.0.1:${server.address().port}`;
   try{
-    for(const path of ['/studio','/.netlify/functions/studio']){
-      const response=await fetch(base+path,{redirect:'manual'});assert.equal(response.status,303);assert.equal(response.headers.get('location'),'/');
+    for(const path of ['/','/dashboard','/apps/criativos/','/studio','/.netlify/functions/studio']){
+      const response=await fetch(base+path,{redirect:'manual'});assert.equal(response.status,303);assert.equal(response.headers.get('location'),'/login');
     }
     for(const path of ['/.netlify/functions/job','/api/session','/.netlify/functions/session'])assert.equal((await fetch(base+path)).status,401);
     assert.equal((await fetch(base+'/private/studio.html')).status,404);
     assert.equal((await fetch(base+'/studio.html')).status,404);
+    assert.equal((await fetch(base+'/apps/criativos/private/studio.html')).status,404);
+    assert.equal((await fetch(base+'/apps/criativos/../private/dashboard.html')).status,404);
+    assert.equal((await fetch(base+'/login')).status,200);
     const payload={provider:'gemini',apiKey:'test-not-real-key',model:'test-model',prompt:'test',width:300,height:250,count:1,token:'c'.repeat(64)};
     const options={method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:JSON.stringify(payload)};
     assert.equal((await fetch(base+'/.netlify/functions/generate-background',options)).status,401);assert.equal(calls,0);
     const logged=await fetch(base+'/api/login',{method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:JSON.stringify({email:env.ADMIN_EMAIL,password})});
     const cookie=cookieFrom(logged);
-    const studio=await fetch(base+'/studio',{headers:{Cookie:cookie}});assert.equal(studio.status,200);assert.match(await studio.text(),/id="logout"/);assert.equal(studio.headers.get('cache-control'),'private, no-store');
-    assert.equal((await fetch(base+'/.netlify/functions/generate-background',{...options,headers:{...options.headers,Cookie:cookie}})).status,202);
-    const query=await fetch(base+'/.netlify/functions/job',{headers:{Cookie:cookie,'x-job-token':payload.token}});assert.equal(query.status,200);assert.equal(calls,1);
+    const legacy=await fetch(base+'/studio',{headers:{Cookie:cookie},redirect:'manual'});assert.equal(legacy.status,303);assert.equal(legacy.headers.get('location'),'/apps/criativos/');
+    const dashboard=await fetch(base+'/',{headers:{Cookie:cookie}});assert.equal(dashboard.status,200);assert.match(await dashboard.text(),/Abrir Estúdio de criativos/);
+    const studio=await fetch(base+'/apps/criativos/',{headers:{Cookie:cookie}});assert.equal(studio.status,200);assert.match(await studio.text(),/Todas as aplicações/);assert.equal(studio.headers.get('cache-control'),'private, no-store');
+    const asset=await fetch(base+'/apps/criativos/app.js');assert.equal(asset.status,200);assert.match(asset.headers.get('content-type'),/javascript/);
+    assert.equal((await fetch(base+'/apps/criativos/api/generate',options)).status,401);
+    assert.equal((await fetch(base+'/apps/criativos/api/generate',{...options,headers:{...options.headers,Cookie:cookie}})).status,202);
+    const query=await fetch(base+'/apps/criativos/api/job',{headers:{Cookie:cookie,'x-job-token':payload.token}});assert.equal(query.status,200);assert.equal(calls,1);
     await fetch(base+'/api/logout',{method:'POST',headers:{Origin:base,Cookie:cookie}});
     assert.equal((await fetch(base+'/.netlify/functions/job',{headers:{Cookie:cookie,'x-job-token':payload.token}})).status,401);
   }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
