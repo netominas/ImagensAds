@@ -54,3 +54,21 @@ Gerações utilizam os provedores e as chaves já configurados no estúdio. Brie
 7. Confira login, dashboard, Google Ads e estúdio; sem sessão, páginas privadas redirecionam ao login e APIs retornam 401. Confirme que histórico, prompts e chaves existentes continuam disponíveis.
 
 Não altere o proxy, a porta 18888, outros programas do Supervisor nem outros sites da VPS.
+
+## Dashboard de ROI
+
+Páginas privadas: `/apps/roi/`, `/apps/roi/sites` e `/apps/roi/vinculos`. As APIs `/apps/roi/api/*` usam a sessão existente; POST e DELETE exigem a origem correta. Somente `app.js` e `style.css` são arquivos públicos da aplicação.
+
+A credencial usa `GOOGLE_AD_MANAGER_CREDENTIALS_FILE` quando configurada ou reutiliza `GOOGLE_ADS_CREDENTIALS_FILE`. Autorize o e-mail como usuário de **conta de serviço** em cada rede do Ad Manager, habilitando acesso à API e relatórios. A API SOAP usa `v202608` por padrão, configurável por `AD_MANAGER_API_VERSION`. Não é necessário alterar `STORAGE_SECRET` nem as chaves do estúdio.
+
+A sincronização consulta contas e redes selecionadas, até 93 dias por execução. O Ad Manager gera relatório de receita **Ad Exchange** por data, domínio e `utm_campaign`; outras receitas não estão incluídas. Somente linhas da chave `utm_campaign` são somadas, evitando contar novamente os valores das demais chaves do mesmo relatório. Valores monetários do CSV_DUMP e Google Ads são convertidos de micros uma única vez.
+
+O custo autoritativo por campanha e dia é conciliado com anúncios e grupos de recursos PMax. Os detalhes não são somados novamente ao total da campanha. Destinos múltiplos ou detalhamentos divergentes ficam sem site atribuído. O vínculo da receita usa domínio registrável e o ID ou a UTM resolvida nas URLs, com precedência anúncio → grupo → campanha → conta. Mudanças históricas nas URLs podem exigir vínculo manual. Subdomínios são agrupados no mesmo site.
+
+Uma UTM compartilhada por campanhas diferentes não é rateada: exige conciliação manual. As regras são exclusivas por rede, domínio e UTM e ficam registradas na configuração de cada relatório salvo. Receita sem custo correspondente e custo sem receita vinculada não geram lucro ou ROI artificial. Falhas de coleta, falta de câmbio e fusos incompatíveis impedem o cálculo correspondente. Os indicadores abrangem somente vínculos confirmados; pendências aparecem separadamente.
+
+Lucro de mídia = receita estimada Ad Exchange − custo Google Ads. ROI = lucro de mídia / custo; quando custo é zero, ROI é indefinido. Impostos, taxas de parceiros e outros custos operacionais não estão incluídos. USD é convertido para BRL por dia de cada registro usando PTAX de venda do Banco Central; finais de semana e feriados usam a última cotação publicada. A data e a taxa utilizadas ficam no relatório. Falha no BCB deixa os valores em USD pendentes, sem cotação inventada.
+
+As tabelas próprias `roi_runs`, `roi_links` e `roi_settings` preservam resultados, escopo, regras, cotações e histórico no SQLite existente. A sincronização é explícita, pelo botão; não há cron ou chamadas pagas de IA. Após recarregar a página, o usuário pode acompanhar uma sincronização em andamento ou abrir relatórios anteriores. Reinícios interrompem execuções sem repetir consultas automaticamente. Verifique também `roi_runs.status = 'running'` antes de reiniciar o serviço nas futuras publicações.
+
+Validação: `node --test`. Os testes de ROI cobrem conversão, duplicidade entre redes, ambiguidade, conciliação de custos PMax, isolamento das tabelas existentes e autenticação/CSRF. Consultas reais adicionais devem usar credenciais externas ao repositório.

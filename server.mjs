@@ -11,10 +11,12 @@ import {memoryStore} from './lib/memory-store.mjs';
 import {serveJob} from './netlify/functions/job.mjs';
 import {login,logout,sessionStatus,requireSession,sameOrigin,authJSON} from './lib/auth.mjs';
 import {createGoogleAdsAPI} from './apps/google-ads/api.mjs';
+import {createROIAPI} from './apps/roi/api.mjs';
 
-export function createAppServer({env=process.env,authStore=memoryStore(),jobStore=memoryStore(),generate,generateText,storage,googleAds,googleGenerateText,googleGenerateImage}={}){
+export function createAppServer({env=process.env,authStore=memoryStore(),jobStore=memoryStore(),generate,generateText,storage,googleAds,googleGenerateText,googleGenerateImage,roiOptions}={}){
   const copyAPI=storage?createCopyAPI(storage,generateText):null;
   const googleAPI=storage?createGoogleAdsAPI(storage,{env,...(googleAds?{google:googleAds}:{}),...(googleGenerateText?{generateText:googleGenerateText}:{}),...(googleGenerateImage?{generateImage:googleGenerateImage}:{})}):null;
+  const roiAPI=storage?createROIAPI(storage,{env,...(googleAds?{google:googleAds}:{}),...roiOptions}):null;
   let activeJobs=0;
   const allowed=new Set(['index.html','login.js','login.css','access.js','activate.html','activate.js','favicon.svg','dashboard.js','dashboard.css']);
   const creativeAssets=new Set(['app.js','core.js','styles.css','copy.js','copy-core.js','copy.css']);
@@ -30,6 +32,14 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       const origin=env.APP_ORIGIN||`http://${req.headers.host}`,url=new URL(req.url,origin);
       const originalPath=url.pathname;
       const redirect=location=>new Response(null,{status:303,headers:{Location:location,'Cache-Control':'no-store'}});
+      if(['/apps/roi','/apps/roi/','/apps/roi/sites','/apps/roi/vinculos'].includes(originalPath)){
+        const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);if(denied)return send(redirect('/login'));
+        if(!['GET','HEAD'].includes(req.method))return send(authJSON({error:'Método não permitido.'},405));
+        if(originalPath==='/apps/roi')return send(redirect('/apps/roi/'));
+        return send(new Response(await readFile(new URL('./apps/roi/private/index.html',import.meta.url)),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store','Vary':'Cookie'}}));
+      }
+      const isROI=originalPath.startsWith('/apps/roi/api/');
+      if(isROI){const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);if(denied)return send(denied);if(!roiAPI)return send(authJSON({error:'Persistência indisponível.'},503));}
       if(['/apps/google-ads','/apps/google-ads/','/apps/google-ads/criar','/apps/google-ads/criar/'].includes(originalPath)){
         const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);
         if(denied)return send(redirect('/login'));
@@ -67,6 +77,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
         for await(const chunk of req){size+=chunk.length;if(size>limit){res.writeHead(413).end();return;}chunks.push(chunk);}raw=Buffer.concat(chunks).toString();
       }
       const request=new Request(url,{method:req.method,headers:req.headers,...(!['GET','HEAD'].includes(req.method)?{body:raw}:{})});
+      if(isROI)return send(await roiAPI(request));
       if(isGoogle)return send(await googleAPI(request));
       if(url.pathname==='/api/activate'){
         if(req.method!=='POST'||!sameOrigin(request)||!storage||authSettings(env))return send(authJSON({error:'Ativação indisponível.'},403));
@@ -108,6 +119,10 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
         activeJobs++;
         runJob(input,outputStore,generate).catch(()=>console.error('Falha na execução da geração.')).finally(()=>activeJobs--);
         return;
+      }
+      if(originalPath.startsWith('/apps/roi/')){
+        const asset=originalPath.slice('/apps/roi/'.length);if(!new Set(['app.js','style.css']).has(asset))return send(authJSON({error:'Não encontrado.'},404));
+        return send(new Response(await readFile(new URL('./apps/roi/public/'+asset,import.meta.url)),{headers:{'Content-Type':asset.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8','Cache-Control':'no-store'}}));
       }
       if(originalPath.startsWith('/apps/google-ads/')){
         const asset=originalPath.slice('/apps/google-ads/'.length);

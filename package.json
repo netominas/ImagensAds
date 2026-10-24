@@ -11,7 +11,10 @@
   },
   "dependencies": {
     "@netlify/blobs": "^10.0.0",
-    "sharp": "^0.35.5"
+    "csv-parse": "^7.0.3",
+    "fast-xml-parser": "^5.11.2",
+    "sharp": "^0.35.5",
+    "tldts": "^7.4.19"
   },
   "engines": {
     "node": ">=22"

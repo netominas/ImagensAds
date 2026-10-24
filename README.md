@@ -1,6 +1,6 @@
 # AK Workspace
 
-Painel de aplicações com autenticação compartilhada. Na VPS, `/` abre o dashboard após o login, `/apps/criativos/` abre o estúdio de imagens e copys e `/apps/google-ads/` abre a análise de campanhas. A criação assistida fica em `/apps/google-ads/criar`. O endereço antigo `/studio` redireciona para o estúdio.
+Painel de aplicações com autenticação compartilhada. Na VPS, `/` abre o dashboard após o login, `/apps/criativos/` abre o estúdio de imagens e copys e `/apps/google-ads/` abre a análise de campanhas. A criação assistida fica em `/apps/google-ads/criar`. O dashboard de ROI fica em `/apps/roi/`, com os menus Por campanha, Por sites e Conciliação. O endereço antigo `/studio` redireciona para o estúdio.
 
 Os arquivos do estúdio ficam em `apps/criativos/public/` e `apps/criativos/private/`. O servidor entrega apenas os arquivos públicos autorizados; o HTML privado requer sessão. As APIs do estúdio usam `/apps/criativos/api/`, com os endereços antigos preservados por compatibilidade. Autenticação, persistência e configuração do processo continuam compartilhadas. A pasta persistente e a chave de criptografia permanecem fora do código, preservando as chaves de API e o histórico durante atualizações.
 
