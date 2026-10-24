@@ -1,4 +1,4 @@
-import {attribution} from './model.mjs';
+import {attribution,finalURLs} from './model.mjs';
 import {dateRange} from './admanager.mjs';
 export async function costFacts(google,account,start,end){
  dateRange(start,end);const q=`segments.date BETWEEN '${start}' AND '${end}'`,cid=account.id,mcc=account.mcc;
@@ -16,9 +16,10 @@ export async function costFacts(google,account,start,end){
  const fact=(r,cost,attr)=>({account:cid,account_name:account.name,campaign:String(r.campaign.id),name:r.campaign.name,date:r.segments.date,currency:customer.currencyCode,timezone:customer.timeZone,cost,...attr});
  for(const r of base){const rows=buckets.get(JSON.stringify([r.campaign.id,r.segments.date]))||[],total=Number(r.metrics.costMicros),sum=rows.reduce((s,p)=>s+Number(p.metrics.costMicros),0);
   // Never count both a campaign total and its ad/asset-group breakdown.
-  if(!rows.length||Math.abs(total-sum)>Math.max(10,total*.000001)){facts.push(fact(r,total/1e6,{site:'',utm:'',reason:'Custo sem detalhamento conciliável por site'}));continue;}
+  if(!rows.length||Math.abs(total-sum)>Math.max(10,total*.000001)){facts.push(fact(r,total/1e6,{site:'',utm:'',final_urls:finalURLs(rows.flatMap(p=>p.unit.finalUrls||[])),reason:'Custo sem detalhamento conciliável por site'}));continue;}
   for(const p of rows){const candidates=(p.unit.finalUrls||[]).map(url=>attribution(url,r.campaign,customer,p.group,p.unit)),unique=new Map(candidates.map(a=>[JSON.stringify([a.site,a.utm]),a]));
-   facts.push(fact(r,Number(p.metrics.costMicros)/1e6,unique.size===1?[...unique.values()][0]:{site:'',utm:'',reason:'Múltiplos destinos ou URL ausente'}));
+   const attr=unique.size===1?[...unique.values()][0]:{site:'',utm:'',reason:'Múltiplos destinos ou URL ausente'};
+   facts.push(fact(r,Number(p.metrics.costMicros)/1e6,{...attr,final_urls:finalURLs(p.unit.finalUrls)}));
   }
  }return facts;
 }

@@ -1,6 +1,10 @@
 import {getDomain} from 'tldts';
 import {toBRL} from './fx.mjs';
 export function site(value){try{const host=new URL(value.includes('://')?value:'https://'+value).hostname.toLowerCase();return getDomain(host,{allowPrivateDomains:true})||'';}catch{return '';}}
+export function finalURLs(values){
+ if(!Array.isArray(values))return [];
+ return [...new Set(values.flatMap(value=>{if(typeof value!=='string'||value.length>8192)return [];try{const u=new URL(value);return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password?[u.href]:[];}catch{return [];}}))];
+}
 // UTM values are case-sensitive. Decode URL query values exactly once at extraction.
 export function attribution(url,campaign,customer={},group={},ad={}){
  const domain=site(url),custom=new Map();for(const level of [campaign,group,ad])for(const v of level.urlCustomParameters||[])custom.set(v.key,v.value);
@@ -24,8 +28,8 @@ export function reconcile(costs,revenues,rates,rules=[],{partial=false}={}){
  const campaigns=new Map(),index=new Map(),rows=new Map(),key=(...v)=>JSON.stringify(v);
  const addIndex=(s,u,c)=>{if(!s||!u)return;const k=key(s,u);if(!index.has(k))index.set(k,new Set());index.get(k).add(c);};
  for(const c of costs){const cid=key(c.account,c.campaign);if(!campaigns.has(cid))campaigns.set(cid,[]);campaigns.get(cid).push(c);addIndex(c.site,c.utm,cid);addIndex(c.site,c.campaign,cid);}
- function entry(c,s){const k=key(c.account,c.campaign,s);if(!rows.has(k))rows.set(k,{key:k,account:c.account,account_name:c.account_name,campaign:c.campaign,name:c.name,site:s,cost:0,revenue:0,utms:[],networks:[],status:'cost_only',impressions:0,missing_fx:false,cost_fx_missing:false,revenue_fx_missing:false,cost_original:[],revenue_original:[]});return rows.get(k);}
- for(const c of costs){const r=entry(c,c.site),amount=toBRL(c.cost,c.currency,c.date,rates);if(amount===null){r.missing_fx=true;r.cost_fx_missing=true;}else r.cost+=amount;r.cost_original.push({amount:c.cost,currency:c.currency,date:c.date});if(c.utm&&!r.utms.includes(c.utm))r.utms.push(c.utm);}
+ function entry(c,s){const k=key(c.account,c.campaign,s);if(!rows.has(k))rows.set(k,{key:k,account:c.account,account_name:c.account_name,campaign:c.campaign,name:c.name,site:s,final_urls:[],cost:0,revenue:0,utms:[],networks:[],status:'cost_only',impressions:0,missing_fx:false,cost_fx_missing:false,revenue_fx_missing:false,cost_original:[],revenue_original:[]});return rows.get(k);}
+ for(const c of costs){const r=entry(c,c.site),amount=toBRL(c.cost,c.currency,c.date,rates);if(amount===null){r.missing_fx=true;r.cost_fx_missing=true;}else r.cost+=amount;r.cost_original.push({amount:c.cost,currency:c.currency,date:c.date});if(c.utm&&!r.utms.includes(c.utm))r.utms.push(c.utm);for(const url of finalURLs(c.final_urls))if(!r.final_urls.includes(url))r.final_urls.push(url);}
  let unmatchedRevenue=0,ambiguousRevenue=0,matchedRevenue=0;const pending=[];
  for(const revenue of revenues){
   const rule=rules.find(r=>r.network===revenue.network&&r.site===revenue.site&&r.utm===revenue.utm),candidates=rule?new Set([key(rule.account,rule.campaign)]):index.get(key(revenue.site,revenue.utm))||new Set();
