@@ -9,3 +9,7 @@
 .campaign-sites .campaign-sites-heading{display:none}@media(max-width:980px){.campaign-sites .campaign-sites-heading{display:block;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:#9685af;margin:3px 8px 9px}}
 
 .single-site-campaigns table{min-width:760px}.single-site-campaigns th:first-child,.single-site-campaigns td:first-child{width:40%}.single-site-campaigns th:nth-child(2),.single-site-campaigns td:nth-child(2){width:12%;text-align:right}
+
+/* The page owns vertical scrolling; the sidebar and its site list expand fully. */
+body{display:grid;grid-template-columns:234px minmax(0,1fr);min-height:100vh;align-items:stretch}.sidebar{position:relative;inset:auto;width:auto;min-height:100vh;max-height:none;height:auto;overflow:visible}.sidebar nav{overflow:visible;max-height:none;flex-shrink:0}.campaign-sites{max-height:none;overflow:visible;overscroll-behavior:auto}.sidebar nav .campaign-sites a .site-label{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}.campaign-sites small{flex-shrink:0}main{margin-left:0;min-width:0}
+@media(max-width:1200px){body{grid-template-columns:205px minmax(0,1fr)}}@media(max-width:980px){body{grid-template-columns:76px minmax(0,1fr)}.campaign-sites{max-height:none;overflow:visible}}
