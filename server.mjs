@@ -10,12 +10,15 @@ import {timingSafeEqual} from 'node:crypto';
 import {memoryStore} from './lib/memory-store.mjs';
 import {serveJob} from './netlify/functions/job.mjs';
 import {login,logout,sessionStatus,requireSession,sameOrigin,authJSON} from './lib/auth.mjs';
+import {createGoogleAdsAPI} from './apps/google-ads/api.mjs';
 
-export function createAppServer({env=process.env,authStore=memoryStore(),jobStore=memoryStore(),generate,generateText,storage}={}){
+export function createAppServer({env=process.env,authStore=memoryStore(),jobStore=memoryStore(),generate,generateText,storage,googleAds,googleGenerateText,googleGenerateImage}={}){
   const copyAPI=storage?createCopyAPI(storage,generateText):null;
+  const googleAPI=storage?createGoogleAdsAPI(storage,{env,...(googleAds?{google:googleAds}:{}),...(googleGenerateText?{generateText:googleGenerateText}:{}),...(googleGenerateImage?{generateImage:googleGenerateImage}:{})}):null;
   let activeJobs=0;
   const allowed=new Set(['index.html','login.js','login.css','access.js','activate.html','activate.js','favicon.svg','dashboard.js','dashboard.css']);
   const creativeAssets=new Set(['app.js','core.js','styles.css','copy.js','copy-core.js','copy.css']);
+  const googleAssets=new Set(['app.js','creator.js','style.css','creator.css','session.js']);
   return createServer(async(req,res)=>{
     const send=response=>{
       res.writeHead(response.status,Object.fromEntries(response.headers));
@@ -27,6 +30,20 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       const origin=env.APP_ORIGIN||`http://${req.headers.host}`,url=new URL(req.url,origin);
       const originalPath=url.pathname;
       const redirect=location=>new Response(null,{status:303,headers:{Location:location,'Cache-Control':'no-store'}});
+      if(['/apps/google-ads','/apps/google-ads/','/apps/google-ads/criar','/apps/google-ads/criar/'].includes(originalPath)){
+        const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);
+        if(denied)return send(redirect('/login'));
+        if(req.method!=='GET'&&req.method!=='HEAD')return send(authJSON({error:'Método não permitido.'},405));
+        if(originalPath==='/apps/google-ads')return send(redirect('/apps/google-ads/'));
+        if(originalPath==='/apps/google-ads/criar/')return send(redirect('/apps/google-ads/criar'));
+        const file=originalPath==='/apps/google-ads/'?'campaigns.html':'create.html';
+        return send(new Response(await readFile(new URL('./apps/google-ads/private/'+file,import.meta.url)),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store','Vary':'Cookie'}}));
+      }
+      const isGoogle=originalPath.startsWith('/apps/google-ads/api/');
+      if(isGoogle){
+        const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);if(denied)return send(denied);
+        if(!googleAPI)return send(authJSON({error:'Persistência indisponível.'},503));
+      }
       if(['/', '/dashboard', '/apps/criativos', '/apps/criativos/', '/studio', '/.netlify/functions/studio'].includes(originalPath)){
         const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);
         if(denied)return send(redirect('/login'));
@@ -46,10 +63,11 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       }
       let raw='';
       if(!['GET','HEAD'].includes(req.method)){
-        const chunks=[];let size=0;const limit=isData?29*1024*1024:64000;
+        const chunks=[];let size=0;const limit=isData?29*1024*1024:isGoogle?21*1024*1024:64000;
         for await(const chunk of req){size+=chunk.length;if(size>limit){res.writeHead(413).end();return;}chunks.push(chunk);}raw=Buffer.concat(chunks).toString();
       }
       const request=new Request(url,{method:req.method,headers:req.headers,...(!['GET','HEAD'].includes(req.method)?{body:raw}:{})});
+      if(isGoogle)return send(await googleAPI(request));
       if(url.pathname==='/api/activate'){
         if(req.method!=='POST'||!sameOrigin(request)||!storage||authSettings(env))return send(authJSON({error:'Ativação indisponível.'},403));
         let data;try{data=JSON.parse(raw);}catch{return send(authJSON({error:'Dados inválidos.'},400));}
@@ -90,6 +108,11 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
         activeJobs++;
         runJob(input,outputStore,generate).catch(()=>console.error('Falha na execução da geração.')).finally(()=>activeJobs--);
         return;
+      }
+      if(originalPath.startsWith('/apps/google-ads/')){
+        const asset=originalPath.slice('/apps/google-ads/'.length);
+        if(!googleAssets.has(asset))return send(authJSON({error:'Não encontrado.'},404));
+        return send(new Response(await readFile(new URL('./apps/google-ads/public/'+asset,import.meta.url)),{headers:{'Content-Type':asset.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8','Cache-Control':'no-store'}}));
       }
       const asset=originalPath.startsWith('/apps/criativos/')?originalPath.slice('/apps/criativos/'.length):originalPath.slice(1);
       if(creativeAssets.has(asset))return send(new Response(await readFile(new URL('./apps/criativos/public/'+asset,import.meta.url)),{headers:{'Content-Type':asset.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8','Cache-Control':'no-store'}}));

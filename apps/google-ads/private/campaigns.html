@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>AK Google Ads · Campanhas</title><link rel="stylesheet" href="/apps/google-ads/style.css"></head>
+<body>
+<aside class="sidebar">
+  <a class="brand" href="/apps/google-ads/" aria-label="AK Google Ads início"><img src="/favicon.svg" width="34" height="34" alt=""><span>AK<span class="brand-period">.</span></span></a>
+  <div class="workspace"><span class="workspace-icon">P</span><div>Seu workspace<small>Google Ads</small></div><span class="workspace-dots">···</span></div>
+  <p class="nav-label">WORKSPACE</p><a class="nav-item selected" href="/apps/google-ads/" aria-current="page"><span class="nav-icon">▦</span> Campanhas <span class="nav-active"></span></a>
+  <a class="nav-item" href="/apps/google-ads/criar"><span class="nav-icon">✧</span> Criar com IA</a>
+  <a class="nav-item return-apps" href="/">← Todas as aplicações</a><div class="sidebar-note"><span class="connection-dot"></span><strong>Google Ads conectado</strong><p>Uma visão clara.<br>Decisões melhores.</p></div>
+  <div class="sidebar-bottom"><span class="avatar">P</span><div>Publisher<small>Análise de campanhas</small></div><span class="local-badge">AK</span></div>
+</aside>
+<main>
+  <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <strong>Campanhas</strong></div><span class="read-only"><span class="connection-dot"></span> Somente leitura</span></header>
+  <div class="page">
+    <div class="heading"><div><div class="eyebrow">PERFORMANCE EM FOCO</div><h1>Campanhas<span>.</span></h1><p>Acompanhe o que importa, em um só lugar.</p></div><button id="export" class="button secondary" disabled><span aria-hidden="true">↗</span> Exportar CSV</button></div>
+    <section class="filters" aria-label="Seleção de conta e período">
+      <label class="account-filter"><span class="field-label">CONTA DE ANÚNCIOS</span><select id="account" aria-label="Conta de anúncios" disabled><option>Conectando ao Google Ads…</option></select></label>
+      <div class="date-filter"><label><span class="field-label">PERÍODO</span><select id="preset" aria-label="Período"><option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option><option value="month">Este mês</option><option value="custom">Personalizado</option></select></label><div class="date-inputs"><input id="start" type="date" aria-label="Data inicial"><span>—</span><input id="end" type="date" aria-label="Data final"></div></div>
+      <button id="refresh" class="button dark" disabled><span aria-hidden="true">↻</span> Atualizar</button>
+    </section>
+    <div class="account-context"><span id="account-context">Descobrindo MCCs e contas com acesso…</span><span id="updated">Aguardando sincronização</span></div>
+    <div id="notice" class="notice" role="status" hidden></div>
+    <section class="metrics" aria-label="Resumo do período">
+      <article class="metric"><div class="metric-label">Custo <span class="metric-symbol">↗</span></div><strong id="k-cost">—</strong><small>Investimento no período</small><div class="metric-line mint"></div></article>
+      <article class="metric"><div class="metric-label">Taxa de conversão <span class="metric-symbol">%</span></div><strong id="k-rate">—</strong><small>Conversões por interação</small><div class="metric-line purple"></div></article>
+      <article class="metric"><div class="metric-label">Custo por conversão <span class="metric-symbol">◎</span></div><strong id="k-cpa">—</strong><small id="conversion-count">Conversões no período</small><div class="metric-line blue"></div></article>
+      <article class="metric"><div class="metric-label">CPC médio <span class="metric-symbol">↖</span></div><strong id="k-cpc">—</strong><small>Custo médio por clique</small><div class="metric-line amber"></div></article>
+    </section>
+    <section class="campaigns" aria-label="Tabela de campanhas">
+      <div class="table-heading"><div><h2>Todas as campanhas <span id="count" class="count">0</span></h2><p>Seus indicadores essenciais, lado a lado.</p></div><div class="table-actions"><label class="search"><span aria-hidden="true">⌕</span><input id="search" placeholder="Buscar campanha…" aria-label="Buscar campanha"></label><select id="status" aria-label="Filtrar status"><option value="all">Todos os status</option><option value="ENABLED">Habilitadas</option><option value="PAUSED">Pausadas</option></select></div></div>
+      <div class="table-scroll"><table><thead><tr>
+        <th scope="col" class="name-col"><button data-sort="name">Nome da campanha <span class="sort-mark"></span></button></th>
+        <th scope="col"><button data-sort="budget" title="Orçamento atual, não o orçamento histórico do período">Orçamento <span class="sort-mark"></span></button></th>
+        <th scope="col"><button data-sort="cost">Custo <span class="sort-mark">↓</span></button></th>
+        <th scope="col"><button data-sort="conversion_rate" title="Conversões divididas pelas interações elegíveis">Taxa de conversão <span class="sort-mark"></span></button></th>
+        <th scope="col"><button data-sort="cost_per_conversion">Custo / conversão <span class="sort-mark"></span></button></th>
+        <th scope="col"><button data-sort="cpc">CPC médio <span class="sort-mark"></span></button></th>
+      </tr></thead><tbody id="rows"><tr><td colspan="6"><div class="empty"><span class="loader"></span><strong>Preparando sua visão de campanhas</strong><p>Consultando os acessos da sua conta de serviço.</p></div></td></tr></tbody><tfoot id="totals" hidden></tfoot></table></div>
+      <div class="table-footer"><span id="showing">Aguardando dados</span><div><button id="prev" class="pager" disabled aria-label="Página anterior">←</button><span id="page-label">Página 1</span><button id="next" class="pager" disabled aria-label="Próxima página">→</button></div></div>
+    </section>
+    <footer class="page-footer"><p><span class="connection-dot"></span> Dados reais · Google Ads API</p><p>Orçamento atual · Métricas do período selecionado · <span title="Métricas sem denominador aparecem como traço">— = sem base para cálculo</span></p></footer>
+  </div>
+</main><script type="module" src="/apps/google-ads/app.js" defer></script>
+</body></html>

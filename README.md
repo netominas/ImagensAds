@@ -1,6 +1,6 @@
 # AK Workspace
 
-Painel de aplicações com autenticação compartilhada. Na VPS, `/` abre o dashboard após o login e `/apps/criativos/` abre o estúdio de imagens e copys. O endereço antigo `/studio` redireciona para o estúdio. Os cartões de análise de relatórios e criação de campanhas são aplicações planejadas.
+Painel de aplicações com autenticação compartilhada. Na VPS, `/` abre o dashboard após o login, `/apps/criativos/` abre o estúdio de imagens e copys e `/apps/google-ads/` abre a análise de campanhas. A criação assistida fica em `/apps/google-ads/criar`. O endereço antigo `/studio` redireciona para o estúdio.
 
 Os arquivos do estúdio ficam em `apps/criativos/public/` e `apps/criativos/private/`. O servidor entrega apenas os arquivos públicos autorizados; o HTML privado requer sessão. As APIs do estúdio usam `/apps/criativos/api/`, com os endereços antigos preservados por compatibilidade. Autenticação, persistência e configuração do processo continuam compartilhadas. A pasta persistente e a chave de criptografia permanecem fora do código, preservando as chaves de API e o histórico durante atualizações.
 
@@ -10,14 +10,17 @@ Estúdio de criativos para Google Ads e Meta: Gemini, OpenAI (ChatGPT) e Grok, b
 
 ## Executar localmente
 
-Requer Node.js 22 ou superior. Não é necessário instalar dependências para o servidor local:
+Requer Node.js 24 LTS. Instale as dependências antes de iniciar:
 
 ```sh
+npm ci
 node scripts/create-admin.mjs
 node server.mjs
 ```
 
-O primeiro comando pede e-mail e senha sem exibir a senha. Ele cria um `.env` ignorado pelo Git contendo apenas o e-mail e o hash scrypt da senha. Abra http://localhost:8888, entre e, em **Configurações**, informe a chave e o modelo da IA desejada. O uso real das APIs é cobrado pelo provedor. O servidor local mantém trabalhos e sessões temporários em memória.
+O script de administrador pede e-mail e senha sem exibir a senha. Ele cria um `.env` ignorado pelo Git contendo apenas o e-mail e o hash scrypt da senha. Abra http://localhost:8888, entre e, em **Configurações**, informe a chave e o modelo da IA desejada. O uso real das APIs é cobrado pelo provedor. O servidor local mantém trabalhos e sessões temporários em memória.
+
+Para usar o Google Ads, configure a persistência e a credencial conforme [VPS.md](VPS.md). Sem `DATA_DIR`, as APIs Google Ads ficam indisponíveis. A documentação Netlify a seguir descreve a versão anterior; a persistência da VPS é SQLite e o cofre de chaves é compartilhado entre as aplicações.
 
 ```sh
 node --test
@@ -85,4 +88,3 @@ Para redefinir o acesso, gere um novo hash com o script em uma pasta local sem `
 Na instalação VPS, a página inicial reúne o gerador de imagens e o gerador de copys. A biblioteca de textos inclui Facebook/Instagram, campanhas de pesquisa Google Ads, push e conteúdo personalizado. Prompts e modelos de texto são independentes dos prompts e modelos de imagem; as chaves de API são compartilhadas.
 
 Textos são gerados em segundo plano e armazenados no SQLite do servidor. O histórico permite abrir, editar, copiar, baixar TXT e excluir resultados. Pedidos interrompidos por reinício do servidor não são cobrados novamente por uma repetição automática. Os limites de tamanho dos anúncios são instruções para a IA e devem ser revisados antes da publicação.
-
