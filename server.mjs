@@ -121,7 +121,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
         return;
       }
       if(originalPath.startsWith('/apps/roi/')){
-        const asset=originalPath.slice('/apps/roi/'.length);if(!new Set(['app.js','style.css','campaign-report.js','gam-metrics.js']).has(asset))return send(authJSON({error:'Não encontrado.'},404));
+        const asset=originalPath.slice('/apps/roi/'.length);if(!new Set(['app.js','style.css','campaign-report.js','gam-metrics.js','ads-metrics.js']).has(asset))return send(authJSON({error:'Não encontrado.'},404));
         return send(new Response(await readFile(new URL('./apps/roi/public/'+asset,import.meta.url)),{headers:{'Content-Type':asset.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8','Cache-Control':'no-store'}}));
       }
       if(originalPath.startsWith('/apps/google-ads/')){

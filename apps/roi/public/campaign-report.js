@@ -1,3 +1,4 @@
+import {adsMetrics} from './ads-metrics.js';
 import {gamMetrics} from './gam-metrics.js';
 export function campaignRows(result,{account,campaign,site=''}){
  return (result?.rows||[]).filter(r=>r.account===account&&r.campaign===campaign&&(!site||(site==='Sem site identificado'?!r.site||r.site===site:r.site===site)));
@@ -18,6 +19,7 @@ export function dailyReport(rows,rates={},start,end){
  return [...days.values()].sort((a,b)=>a.date.localeCompare(b.date)).map(day=>{
   const cost=day.missingCost?null:day.cost,revenue=day.missingRevenue||rows.some(r=>r.revenue==null)?null:day.revenue,comparable=day.comparable&&cost!=null&&revenue!=null,profit=comparable?revenue-cost:null;
   const gam_original=rows.flatMap(r=>r.gam_original||[]).filter(f=>f.date===day.date);
-  return {...gamMetrics(gam_original,rates),gam_original,date:day.date,cost,revenue,profit,roi:comparable&&cost>0?profit/cost:null,comparable};
+  const ads_original=rows.every(r=>Array.isArray(r.ads_original))?rows.flatMap(r=>r.ads_original).filter(f=>f.date===day.date):null;
+  return {...gamMetrics(gam_original,rates),...adsMetrics(ads_original,rates),ads_original,gam_original,date:day.date,cost,revenue,profit,roi:comparable&&cost>0?profit/cost:null,comparable};
  });
 }
