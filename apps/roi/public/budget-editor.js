@@ -11,7 +11,7 @@ export function budgetEditor({api,onChanged}){
  async function loadValues(){
   const accounts=[...new Set([...document.querySelectorAll('.campaign-budget-button[data-budget-account]')].map(b=>b.dataset.budgetAccount))].filter(a=>!pendingAccounts.has(a)&&Date.now()-(fetched.get(a)||0)>=30*60000);if(!accounts.length){paint();return;}
   accounts.forEach(a=>pendingAccounts.add(a));paint();
-  try{const data=await api('/campaign-budgets?'+new URLSearchParams({accounts:accounts.join(',')}));for(const item of data.items){const key=item.account+':'+item.campaign,old=values.get(key);if(!old?.updated||Date.parse(item.updated)>=Date.parse(old.updated))values.set(key,item);}for(const a of accounts)fetched.set(a,Date.now()-((data.warnings||[]).some(w=>w.account===a)?29*60000:0));}
+  try{const data=await api('/campaign-budgets?'+new URLSearchParams({accounts:accounts.join(',')}));for(const item of data.items){const key=item.account+':'+item.campaign,old=values.get(key);if(!old?.updated||Date.parse(item.updated)>=Date.parse(old.updated))values.set(key,item);}for(const a of accounts){const times=data.items.filter(item=>item.account===a).map(item=>Date.parse(item.updated)).filter(Number.isFinite);fetched.set(a,(data.warnings||[]).some(w=>w.account===a)?Date.now()-29*60000:times.length?Math.min(...times):Date.now());}}
   catch{for(const a of accounts)fetched.set(a,Date.now()-29*60000);}
   finally{accounts.forEach(a=>pendingAccounts.delete(a));paint();}
  }
