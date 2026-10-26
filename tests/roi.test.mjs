@@ -69,16 +69,18 @@ test('Ads costs reconcile campaign totals with ad and PMax details without dupli
 test('ROI shares login, blocks private files and cross-origin changes, persists snapshots and isolates studio data',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'ak-roi-'));let storage=openStorage(dir,'9'.repeat(64));
  await storage.saveKeys({gemini:'private-fake-key-keep'});await storage.saveSettings({templates:[{id:'keep',prompt:'Manter'}],models:{}});storage.addImage({id:'keep-image'},'image/png',Buffer.from([1]));
- const google={configured:()=>true,accessible:async()=>({resourceNames:['customers/'+account]}),search:async()=>[{customer:{id:account,descriptiveName:'Conta',manager:false,status:'ENABLED',currencyCode:'BRL',timeZone:'America/Sao_Paulo'}}]};
+ const google={configured:()=>true,accessible:async()=>({resourceNames:['customers/'+account]}),search:async(cid,q)=>q.includes('metrics.optimization_score_url')?[{customer:{id:account},metrics:{optimizationScoreUrl:'https://adwords.google.com/aw/recommendations?ocid=7654321&authuser=3'}}]:[{customer:{id:account,descriptiveName:'Conta',manager:false,status:'ENABLED',currencyCode:'BRL',timeZone:'America/Sao_Paulo'}}]};
  const gam={networks:async()=>[{id:'1234',name:'Rede',currency:'BRL',timezone:'America/Sao_Paulo'}],keys:async()=>[{id:'1',name:'utm_campaign',reportableType:'ON'}],report:async()=>({mode:'CUSTOM_CRITERIA',key:'1',report_id:'77',rows:[csv()]})};
  const env={ADMIN_EMAIL:'roi@example.test',ADMIN_PASSWORD_HASH:await hashPassword('roi-test-password-only')};
  const server=createAppServer({env,storage,authStore:storage.store('auth'),googleAds:google,roiOptions:{admanager:gam,loadCosts:async()=>[cost({final_urls:['https://exemplo.com.br/pagina/']})],rates:async()=>({})}});await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port,prefix='/apps/roi/api';let cookie,run;
  const request=(path,body,origin=base)=>fetch(base+path,{method:body?'POST':'GET',redirect:'manual',headers:{'Content-Type':'application/json',Origin:origin,...(cookie?{Cookie:cookie}:{})},...(body?{body:JSON.stringify(body)}:{})});
  try{
   for(const path of ['/apps/roi/','/apps/roi/sites','/apps/roi/vinculos'])assert.equal((await request(path)).status,303);
-  assert.equal((await request(prefix+'/status')).status,401);for(const path of ['/apps/roi/private/index.html','/apps/roi/api.mjs','/apps/roi/admanager.mjs','/.tools/production-smoke.mjs'])assert.equal((await request(path)).status,404);
+  assert.equal((await request(prefix+'/status')).status,401);assert.equal((await request(prefix+'/google-ads-link?account='+account+'&campaign=111')).status,401);for(const path of ['/apps/roi/private/index.html','/apps/roi/api.mjs','/apps/roi/admanager.mjs','/.tools/production-smoke.mjs'])assert.equal((await request(path)).status,404);
   const login=await request('/api/login',{email:env.ADMIN_EMAIL,password:'roi-test-password-only'});cookie=login.headers.get('set-cookie').split(';')[0];
   for(const path of ['/apps/roi/','/apps/roi/sites','/apps/roi/vinculos','/apps/criativos/','/apps/google-ads/'])assert.equal((await request(path)).status,200);
+  const destination=await request(prefix+'/google-ads-link?account='+account+'&campaign=111');assert.equal(destination.status,303);assert.equal(destination.headers.get('location'),'https://ads.google.com/aw/campaigns?campaignId=111&ocid=7654321');
+  assert.equal((await request(prefix+'/google-ads-link?account=9999999999&campaign=111')).status,403);assert.equal((await request(prefix+'/google-ads-link?account='+account+'&campaign=invalid')).status,400);
   assert.equal((await request(prefix+'/sync',{start:date,end:date,accounts:[account],networks:['1234']},'https://evil.example')).status,403);
   assert.equal((await request(prefix+'/sync',{start:date,end:date,accounts:['9999999999'],networks:['1234']})).status,400);
   const r=await request(prefix+'/sync',{start:date,end:date,accounts:[account],networks:['1234']});assert.equal(r.status,202);const job=await r.json();
@@ -92,7 +94,7 @@ test('ROI shares login, blocks private files and cross-origin changes, persists 
   assert.equal((await fetch(base+prefix+'/links',{method:'DELETE',headers:{Cookie:cookie,Origin:base,'Content-Type':'application/json'},body:JSON.stringify({id:linked.links[0].id})})).status,200);
   assert.equal((await(await request(prefix+'/catalog')).json()).links.length,0);
   assert.equal((await(await request(prefix+'/run?id='+job.id)).json()).config.links.length,0);
-  assert.equal((await storage.keys()).gemini,'private-fake-key-keep');assert.equal(storage.images()[0].id,'keep-image');assert.equal((await storage.settings()).templates[0].id,'keep');
+  assert.equal((await storage.keys()).gemini,'private-fake-key-keep');assert.equal(storage.images()[0].id,'keep-image');assert.equal((await storage.settings()).templates[0].id,'keep');assert.equal(storage.db.prepare('SELECT ocid FROM roi_google_ads_accounts WHERE account=?').get(account).ocid,'7654321');
   await request('/api/logout',{});assert.equal((await request(prefix+'/run?id='+job.id)).status,401);
  }finally{server.closeAllConnections();await new Promise(r=>server.close(r));storage.close();}
  try{storage=openStorage(dir,'9'.repeat(64));assert.equal(JSON.parse(storage.db.prepare('SELECT result FROM roi_runs WHERE id=?').get(run.id).result).totals.profit,5);assert.equal((await storage.keys()).gemini,'private-fake-key-keep');}finally{storage.close();const absolute=resolve(dir);assert.ok(absolute.startsWith(resolve(tmpdir())+sep));await rm(absolute,{recursive:true,force:true});}

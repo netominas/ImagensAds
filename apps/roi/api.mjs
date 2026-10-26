@@ -1,3 +1,4 @@
+import {createGoogleAdsLinks} from './google-ads-links.mjs';
 import {randomBytes} from 'node:crypto';
 import {authJSON,sameOrigin} from '../../lib/auth.mjs';
 import {AdsError,createGoogleAdsClient} from '../google-ads/client.mjs';
@@ -13,6 +14,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
  CREATE TABLE IF NOT EXISTS roi_links (id TEXT PRIMARY KEY,network TEXT NOT NULL,site TEXT NOT NULL,utm TEXT NOT NULL,account TEXT NOT NULL,campaign TEXT NOT NULL,UNIQUE(network,site,utm));
  CREATE TABLE IF NOT EXISTS roi_settings (id INTEGER PRIMARY KEY CHECK(id=1),data TEXT NOT NULL);`);
  db.prepare("UPDATE roi_runs SET status='error',error='Sincronização interrompida pelo reinício. Os relatórios anteriores foram preservados.' WHERE status='running'").run();
+ const googleAdsLink=createGoogleAdsLinks(db,google);
  const links=()=>db.prepare('SELECT * FROM roi_links ORDER BY site,utm').all();
  const config=()=>{const r=db.prepare('SELECT data FROM roi_settings WHERE id=1').get();return r?JSON.parse(r.data):null;};
  async function catalog(refresh=false){
@@ -43,6 +45,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   if(!['GET','HEAD'].includes(method)&&!sameOrigin(request))return authJSON({error:'Origem não permitida.'},403);
   try{
    if(method==='GET'){
+    if(path==='/google-ads-link'){const account=url.searchParams.get('account'),campaign=url.searchParams.get('campaign');if(!/^\d{10}$/.test(account||'')||!/^\d{1,20}$/.test(campaign||''))throw new AdsError('Conta ou campanha inválida.',{status:400});const data=await catalog(),selected=data.accounts.find(a=>a.id===account);if(!selected)throw new AdsError('Esta conta não está disponível para o painel.',{status:403});const destination=await googleAdsLink(selected,campaign);return new Response(null,{status:303,headers:{Location:destination,'Cache-Control':'private, no-store','Vary':'Cookie'}});}
     if(path==='/catalog')return authJSON({...await catalog(url.searchParams.get('refresh')==='1'),settings:config(),links:links()});
     if(path==='/status'){const running=db.prepare("SELECT id,progress FROM roi_runs WHERE status='running' ORDER BY created DESC LIMIT 1").get(),latest=db.prepare("SELECT id FROM roi_runs WHERE status='done' ORDER BY created DESC LIMIT 1").get();return authJSON({running:running||null,latest:latest?.id||null,active_jobs:active?1:0});}
     if(path==='/run')return authJSON(getRun(url.searchParams.get('id')));
