@@ -37,3 +37,5 @@ main{min-width:0}.topbar{min-height:64px;background:#fff;border-bottom:1px solid
 
 /* Optional full-width ROI workspace */
 body.sidebar-hidden{grid-template-columns:minmax(0,1fr)}.sidebar-toggle{display:inline-grid;place-items:center;width:36px;height:36px;flex:0 0 36px;border:1px solid var(--line);border-radius:6px;background:#fff;color:#41668c;cursor:pointer;padding:7px}.sidebar-toggle svg{width:20px;height:20px}.sidebar-toggle:hover{background:#edf4fc;border-color:#b5cde4}.sidebar-hidden .sidebar-toggle{background:#edf4fc;color:#175cba}@media(max-width:540px){.sidebar-toggle{width:40px;height:40px;flex-basis:40px;padding:9px}}
+
+.controls.campaign-controls{grid-template-columns:minmax(155px,1fr) minmax(224px,1.5fr) max-content}
