@@ -32,7 +32,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       const origin=env.APP_ORIGIN||`http://${req.headers.host}`,url=new URL(req.url,origin);
       const originalPath=url.pathname;
       const redirect=location=>new Response(null,{status:303,headers:{Location:location,'Cache-Control':'no-store'}});
-      if(['/apps/roi','/apps/roi/','/apps/roi/sites','/apps/roi/vinculos'].includes(originalPath)){
+      if(['/apps/roi','/apps/roi/','/apps/roi/sites','/apps/roi/vinculos','/apps/roi/redes'].includes(originalPath)){
         const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);if(denied)return send(redirect('/login'));
         if(!['GET','HEAD'].includes(req.method))return send(authJSON({error:'Método não permitido.'},405));
         if(originalPath==='/apps/roi')return send(redirect('/apps/roi/'));

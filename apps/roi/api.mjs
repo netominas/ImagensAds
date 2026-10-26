@@ -13,7 +13,7 @@ import {costFacts} from './ads.mjs';
 import {revenueFacts,site} from './model.mjs';
 const id=()=>randomBytes(16).toString('hex');
 export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClient({env}),admanager=createAdManager({env}),rates=dollarRates,loadCosts=costFacts,autoSync=env.ROI_AUTO_SYNC==='true'}={}){
- const db=storage.db;let active=false,catalogPending;
+ const db=storage.db;let active=false,catalogPending,networksPending;
  db.exec(`CREATE TABLE IF NOT EXISTS roi_runs (id TEXT PRIMARY KEY,status TEXT NOT NULL,start TEXT NOT NULL,end TEXT NOT NULL,config TEXT NOT NULL,result TEXT,progress TEXT NOT NULL,error TEXT,created TEXT NOT NULL,finished TEXT);
  CREATE TABLE IF NOT EXISTS roi_links (id TEXT PRIMARY KEY,network TEXT NOT NULL,site TEXT NOT NULL,utm TEXT NOT NULL,account TEXT NOT NULL,campaign TEXT NOT NULL,UNIQUE(network,site,utm));
  CREATE TABLE IF NOT EXISTS roi_settings (id INTEGER PRIMARY KEY CHECK(id=1),data TEXT NOT NULL);`);
@@ -32,10 +32,14 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
  const seeded=!warehouse.meta('catalog')?seedCatalog():null;if(seeded)warehouse.putMeta('catalog',seeded);
  async function refreshCatalog(){
   if(catalogPending)return catalogPending;
-  catalogPending=(async()=>{const [ads,networks]=await Promise.all([discover(google),admanager.networks()]);const prior=warehouse.meta('catalog'),selected=config();if(prior&&selected){for(const account of prior.accounts)if(selected.accounts.includes(account.id)&&!ads.accounts.some(a=>a.id===account.id))ads.accounts.push({...account,status:'UNAVAILABLE'});for(const network of prior.networks)if(selected.networks.includes(network.id)&&!networks.some(n=>n.id===network.id))networks.push(network);}
-  const data={accounts:ads.accounts,networks,warnings:ads.warnings,updated_at:new Date().toISOString(),seeded:false};warehouse.putMeta('catalog',data);return data;})();try{return await catalogPending;}finally{catalogPending=null;}
+  catalogPending=(async()=>{const [ads,foundNetworks]=await Promise.all([discover(google),admanager.networks()]);const networks=foundNetworks.map(n=>({...n,available:true}));const prior=warehouse.meta('catalog'),selected=config();if(prior&&selected){for(const account of prior.accounts)if(selected.accounts.includes(account.id)&&!ads.accounts.some(a=>a.id===account.id))ads.accounts.push({...account,status:'UNAVAILABLE'});for(const network of prior.networks)if(selected.networks.includes(network.id)&&!networks.some(n=>n.id===network.id))networks.push({...network,available:false});}
+  const data={accounts:ads.accounts,networks,warnings:ads.warnings,networks_updated_at:new Date().toISOString(),updated_at:new Date().toISOString(),seeded:false};warehouse.putMeta('catalog',data);return data;})();try{return await catalogPending;}finally{catalogPending=null;}
  }
  async function catalog(){return warehouse.meta('catalog')||await refreshCatalog();}
+ async function refreshNetworks(){
+  if(networksPending)return networksPending;
+  networksPending=(async()=>{const prior=await catalog(),found=await admanager.networks(),networks=found.map(n=>({...n,available:true}));for(const n of prior.networks)if(config()?.networks.includes(n.id)&&!networks.some(item=>item.id===n.id))networks.push({...n,available:false});const data={...prior,networks,networks_updated_at:new Date().toISOString()};warehouse.putMeta('catalog',data);return {...data,settings:config(),links:links()};})();try{return await networksPending;}finally{networksPending=null;}
+ }
  function defaults(data){return config()||{accounts:data.accounts.filter(a=>a.status==='ENABLED').map(a=>a.id),networks:data.networks.map(n=>n.id)};}
  function scopeFrom(body,data,{dates=true}={}){
   if(dates){dateRange(body.start,body.end);if(body.end>today())throw new AdsError('A data final não pode estar no futuro.',{status:400});}
@@ -91,6 +95,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
    if(path==='/budget-preview'&&method==='POST')return authJSON(await budgets.preview(body));
    if(path==='/budget-apply'&&method==='POST')return authJSON(await budgets.apply(body));
    if(path==='/campaign-changes'){campaignChanges.scope(body.account,body.campaign);if(!(await catalog()).accounts.some(a=>a.id===body.account))throw new AdsError('Conta indisponível para este painel.',{status:403});return authJSON(method==='DELETE'?campaignChanges.remove(body):campaignChanges.save(body));}
+   if(path==='/networks/refresh'&&method==='POST')return authJSON(await refreshNetworks());
    if(path==='/settings'&&method==='POST'){const selected=scopeFrom(body,await catalog(),{dates:false});db.prepare('INSERT OR REPLACE INTO roi_settings VALUES (1,?)').run(JSON.stringify(selected));return authJSON({settings:selected});}
    if(path==='/links'&&method==='DELETE'){if(typeof body.id!=='string'||!/^[a-f0-9]{32}$/.test(body.id))throw new AdsError('Vínculo inválido.',{status:400});db.prepare('DELETE FROM roi_links WHERE id=?').run(body.id);warehouse.touch();return authJSON({links:links()});}
    if(path==='/links'&&method==='POST'){
