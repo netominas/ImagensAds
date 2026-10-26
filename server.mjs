@@ -21,7 +21,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
   const allowed=new Set(['index.html','login.js','login.css','access.js','activate.html','activate.js','favicon.svg','dashboard.js','dashboard.css']);
   const creativeAssets=new Set(['app.js','core.js','styles.css','copy.js','copy-core.js','copy.css']);
   const googleAssets=new Set(['app.js','creator.js','style.css','creator.css','session.js']);
-  return createServer(async(req,res)=>{
+  const server=createServer(async(req,res)=>{
     const send=response=>{
       res.writeHead(response.status,Object.fromEntries(response.headers));
       if(response.body)Readable.fromWeb(response.body).pipe(res);else res.end();
@@ -136,6 +136,8 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       res.writeHead(200,{'Content-Type':file.endsWith('.svg')?'image/svg+xml':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','Cache-Control':'no-store'}).end(await readFile(new URL(`./public/${file}`,import.meta.url)));
     }catch{if(!res.headersSent)res.writeHead(500);res.end('Erro interno.');}
   });
+  server.on('listening',()=>roiAPI?.startAuto());server.on('close',()=>roiAPI?.stopAuto());
+  return server;
 }
 if(process.argv[1]===fileURLToPath(import.meta.url)){
   try{process.loadEnvFile('.env');}catch(error){if(error.code!=='ENOENT')throw error;}

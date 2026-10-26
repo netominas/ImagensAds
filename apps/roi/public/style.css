@@ -20,3 +20,5 @@ main{min-width:0}.topbar{min-height:64px;background:#fff;border-bottom:1px solid
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 .campaign-ads-link{color:#4c7fae;text-decoration:underline;text-decoration-color:#bad0e5;text-underline-offset:3px}.campaign-ads-link:hover{color:#175cba;text-decoration-color:currentColor}
+
+.workspace-status{border-left:1px solid var(--line);padding-left:16px;text-align:right}.workspace-status .workspace-summary{border:0;padding:0;display:block}.workspace-status small{font-size:11px;color:#6486a6;margin-top:4px}@media(max-width:980px){.workspace-status{border:0;padding:0}}@media(max-width:720px){.workspace-status{text-align:left;flex-basis:100%}}
