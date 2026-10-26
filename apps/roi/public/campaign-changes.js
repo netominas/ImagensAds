@@ -9,7 +9,7 @@ export function campaignChangePanel({api}){
  function reset(){form.reset();recordId=newId();$('change-date').value=today();$('change-save').textContent='Salvar registro';$('change-editor-title').textContent='Adicionar alteração';$('change-cancel').hidden=true;}
  function render(){
   $('changes-count').textContent=items.length;
-  $('changes-list').innerHTML=items.length?items.map(item=>`<article class="change-entry"><div class="change-entry-top"><div><time datetime="${esc(item.date)}">${esc(item.date.split('-').reverse().join('/'))}</time><strong>${esc(types.find(t=>t.value===item.type)?.label||item.type)}</strong></div><div class="change-actions"><button type="button" class="text-link" data-change-edit="${esc(item.id)}">Editar</button></div></div><p>${esc(item.description)}</p></article>`).join(''):'<p class="changes-empty">Nenhuma alteração registrada nesta campanha.</p>';
+  $('changes-list').innerHTML=items.length?items.map(item=>`<article class="change-entry"><div class="change-entry-top"><div><time datetime="${esc(item.date)}">${esc(item.date.split('-').reverse().join('/'))}</time><strong>${esc(types.find(t=>t.value===item.type)?.label||item.type)}</strong></div><div class="change-actions">${item.source==='google_ads'?'<span class="change-origin">Google Ads · pelo painel</span>':`<button type="button" class="text-link" data-change-edit="${esc(item.id)}">Editar</button>`}</div></div><p>${esc(item.description)}</p></article>`).join(''):'<p class="changes-empty">Nenhuma alteração registrada nesta campanha.</p>';
   $('changes-list').querySelectorAll('[data-change-edit]').forEach(button=>button.onclick=()=>{const item=items.find(i=>i.id===button.dataset.changeEdit);if(!item||saving)return;recordId=item.id;$('change-type').value=item.type;$('change-date').value=item.date;$('change-description').value=item.description;$('change-save').textContent='Salvar edição';$('change-editor-title').textContent='Editar registro';$('change-cancel').hidden=false;$('change-editor').open=true;message('');$('change-type').focus();});
  }
  async function load(){
@@ -27,5 +27,5 @@ export function campaignChangePanel({api}){
   catch(error){if(current===version)message(error.message,true);}
   finally{if(current===version)busy(false);}
  };
- return {show(scope){panel.hidden=!scope;const next=scope?scope.account+':'+scope.campaign:'';if(next===key)return;key=next;context=scope;version++;items=[];$('changes-list').textContent='';$('changes-count').textContent='0';$('change-editor').open=false;reset();message('');if(scope)void load();}};
+ return {refresh:()=>context?load():Promise.resolve(),show(scope){panel.hidden=!scope;const next=scope?scope.account+':'+scope.campaign:'';if(next===key)return;key=next;context=scope;version++;items=[];$('changes-list').textContent='';$('changes-count').textContent='0';$('change-editor').open=false;reset();message('');if(scope)void load();}};
 }
