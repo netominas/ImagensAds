@@ -1,3 +1,4 @@
+import {createCampaignChanges,changeTypes} from './campaign-changes.mjs';
 import {createGoogleAdsLinks} from './google-ads-links.mjs';
 import {createROIWarehouse} from './warehouse.mjs';
 import {createROIScheduler} from './scheduler.mjs';
@@ -16,7 +17,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
  CREATE TABLE IF NOT EXISTS roi_links (id TEXT PRIMARY KEY,network TEXT NOT NULL,site TEXT NOT NULL,utm TEXT NOT NULL,account TEXT NOT NULL,campaign TEXT NOT NULL,UNIQUE(network,site,utm));
  CREATE TABLE IF NOT EXISTS roi_settings (id INTEGER PRIMARY KEY CHECK(id=1),data TEXT NOT NULL);`);
  db.prepare("UPDATE roi_runs SET status='error',error='Sincronização interrompida pelo reinício. Os dados e relatórios anteriores foram preservados.' WHERE status='running'").run();
- const warehouse=createROIWarehouse(db),googleAdsLink=createGoogleAdsLinks(db,google);
+ const warehouse=createROIWarehouse(db),googleAdsLink=createGoogleAdsLinks(db,google),campaignChanges=createCampaignChanges(db);
  const links=()=>db.prepare('SELECT * FROM roi_links ORDER BY site,utm').all();
  const config=()=>{const r=db.prepare('SELECT data FROM roi_settings WHERE id=1').get();return r?JSON.parse(r.data):null;};
  function seedCatalog(){
@@ -71,6 +72,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   try{
    if(method==='GET'){
     if(path==='/google-ads-link'){const account=url.searchParams.get('account'),campaign=url.searchParams.get('campaign');if(!/^\d{10}$/.test(account||'')||!/^\d{1,20}$/.test(campaign||''))throw new AdsError('Conta ou campanha inválida.',{status:400});const data=await catalog(),selected=data.accounts.find(a=>a.id===account);if(!selected)throw new AdsError('Esta conta não está disponível para o painel.',{status:403});return new Response(null,{status:303,headers:{Location:await googleAdsLink(selected,campaign),'Cache-Control':'private, no-store','Vary':'Cookie'}});}
+    if(path==='/campaign-changes'){const account=url.searchParams.get('account'),campaign=url.searchParams.get('campaign');campaignChanges.scope(account,campaign);if(!(await catalog()).accounts.some(a=>a.id===account))throw new AdsError('Conta indisponível para este painel.',{status:403});return authJSON({items:campaignChanges.list(account,campaign),types:changeTypes});}
     if(path==='/catalog')return authJSON({...await catalog(),settings:config(),links:links(),database:true});
     if(path==='/status'){const latest=db.prepare("SELECT id FROM roi_runs WHERE status='done' ORDER BY created DESC LIMIT 1").get();return authJSON({running:runningJob(),latest:latest?.id||null,active_jobs:active?1:0,automatic:scheduler.status(),revision:warehouse.revision(),last_collection:warehouse.meta('last_collection')});}
     if(path==='/report'){const data=await catalog(),selected=defaults(data),scope=scopeFrom({start:url.searchParams.get('start'),end:url.searchParams.get('end'),accounts:url.searchParams.has('accounts')?url.searchParams.get('accounts').split(','):selected.accounts,networks:url.searchParams.has('networks')?url.searchParams.get('networks').split(','):selected.networks},data);return authJSON(databaseReport(scope));}
@@ -81,6 +83,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
    if(!['POST','DELETE'].includes(method))return authJSON({error:'Método não permitido.'},405);
    if(!request.headers.get('content-type')?.startsWith('application/json'))return authJSON({error:'Envie JSON.'},415);
    let body;try{body=await request.json();}catch{throw new AdsError('JSON inválido.',{status:400});}if(!body||typeof body!=='object'||Array.isArray(body))throw new AdsError('Dados inválidos.',{status:400});
+   if(path==='/campaign-changes'){campaignChanges.scope(body.account,body.campaign);if(!(await catalog()).accounts.some(a=>a.id===body.account))throw new AdsError('Conta indisponível para este painel.',{status:403});return authJSON(method==='DELETE'?campaignChanges.remove(body):campaignChanges.save(body));}
    if(path==='/settings'&&method==='POST'){const selected=scopeFrom(body,await catalog(),{dates:false});db.prepare('INSERT OR REPLACE INTO roi_settings VALUES (1,?)').run(JSON.stringify(selected));return authJSON({settings:selected});}
    if(path==='/links'&&method==='DELETE'){if(typeof body.id!=='string'||!/^[a-f0-9]{32}$/.test(body.id))throw new AdsError('Vínculo inválido.',{status:400});db.prepare('DELETE FROM roi_links WHERE id=?').run(body.id);warehouse.touch();return authJSON({links:links()});}
    if(path==='/links'&&method==='POST'){
