@@ -9,6 +9,11 @@ if(!await requireAccess())throw Error('Sessão necessária.');
 window.addEventListener('storage',e=>{if(e.key==='adstudio-logout')location.replace('/login');});
 window.addEventListener('pageshow',e=>{if(e.persisted)location.reload();});
 const $=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const sidebarKey='roi-sidebar-hidden';
+function setSidebarHidden(hidden,persist=false){document.body.classList.toggle('sidebar-hidden',hidden);$('roi-sidebar').hidden=hidden;$('sidebar-toggle').setAttribute('aria-expanded',String(!hidden));const label=hidden?'Mostrar menu lateral':'Esconder menu lateral';$('sidebar-toggle').setAttribute('aria-label',label);$('sidebar-toggle').title=label;if(hidden)$('campaign-nav').open=false;if(persist)try{localStorage.setItem(sidebarKey,hidden?'true':'false');}catch{}}
+try{setSidebarHidden(localStorage.getItem(sidebarKey)==='true');}catch{setSidebarHidden(false);}
+$('sidebar-toggle').onclick=()=>setSidebarHidden(!document.body.classList.contains('sidebar-hidden'),true);
+addEventListener('storage',event=>{if(event.key===sidebarKey)setSidebarHidden(event.newValue==='true');});
 const state={view:'campaigns',catalog:null,run:null,busy:false,sort:'cost',direction:-1,exportRows:[],messages:[],archive:false,requestToken:0,loading:false,watching:null,readTimer:null};
 const metricTitles={conversion_rate:'Taxa de conversão Google Ads · ponderada pelas interações elegíveis',cost_per_conversion:'Custo por conversão Google Ads · em BRL, ponderado pelas conversões',ecpm:'eCPM Ad Exchange · receita por mil impressões, em BRL',cpc:'CPC Ad Exchange · valor ganho por clique, em BRL',pmr:'Taxa de correspondência programática: respostas programáticas ÷ solicitações elegíveis'};
 const metricMoney=v=>v==null?'—':new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2,maximumFractionDigits:4}).format(v);
