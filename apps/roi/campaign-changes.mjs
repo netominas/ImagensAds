@@ -18,6 +18,7 @@ export function createCampaignChanges(db){
  const invalid=message=>{throw new AdsError(message,{status:400});};
  function scope(account,campaign){if(typeof account!=='string'||typeof campaign!=='string'||!/^\d{10}$/.test(account)||!/^\d{1,20}$/.test(campaign))invalid('Conta ou campanha inválida.');return {account,campaign};}
  function list(account,campaign){scope(account,campaign);return db.prepare('SELECT id,account,campaign,date,type,description,created,updated,source,budget_operation FROM roi_campaign_changes WHERE account=? AND campaign=? AND deleted_at IS NULL ORDER BY date DESC,created DESC,id').all(account,campaign);}
+ function recent(account,campaign,start,end){scope(account,campaign);return db.prepare('SELECT id,date,type,description,source FROM roi_campaign_changes WHERE account=? AND campaign=? AND deleted_at IS NULL AND date BETWEEN ? AND ? ORDER BY date DESC,created DESC,id').all(account,campaign,start,end);}
  function save(body){
   const {account,campaign}=scope(body.account,body.campaign),description=typeof body.description==='string'?body.description.trim():'';
   if(!changeTypes.some(t=>t.value===body.type))invalid('Selecione um tipo de alteração.');
@@ -30,5 +31,5 @@ export function createCampaignChanges(db){
   return {id,items:list(account,campaign)};
  }
  function remove(body){const {account,campaign}=scope(body.account,body.campaign);if(typeof body.id!=='string'||!/^[a-f0-9]{32}$/.test(body.id))invalid('Registro inválido.');const row=db.prepare('SELECT source FROM roi_campaign_changes WHERE id=? AND account=? AND campaign=?').get(body.id,account,campaign);if(row?.source==='google_ads')throw new AdsError('O registro automático do Google Ads é preservado para auditoria.',{status:403});const stamp=new Date().toISOString();const result=db.prepare('UPDATE roi_campaign_changes SET deleted_at=?,updated=? WHERE id=? AND account=? AND campaign=? AND deleted_at IS NULL').run(stamp,stamp,body.id,account,campaign);if(!result.changes)throw new AdsError('Registro não encontrado nesta campanha.',{status:404});return {items:list(account,campaign)};}
- return {scope,list,save,remove};
+ return {scope,list,recent,save,remove};
 }

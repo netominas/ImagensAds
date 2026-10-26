@@ -1,7 +1,7 @@
 import {createBudgets} from './budgets.mjs';
 import {createCampaignChanges,changeTypes} from './campaign-changes.mjs';
 import {createGoogleAdsLinks} from './google-ads-links.mjs';
-import {createROIWarehouse} from './warehouse.mjs';
+import {createROIWarehouse,shiftDay} from './warehouse.mjs';
 import {createROIScheduler} from './scheduler.mjs';
 import {randomBytes} from 'node:crypto';
 import {authJSON,sameOrigin} from '../../lib/auth.mjs';
@@ -74,7 +74,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   try{
    if(method==='GET'){
     if(path==='/google-ads-link'){const account=url.searchParams.get('account'),campaign=url.searchParams.get('campaign');if(!/^\d{10}$/.test(account||'')||!/^\d{1,20}$/.test(campaign||''))throw new AdsError('Conta ou campanha inválida.',{status:400});const data=await catalog(),selected=data.accounts.find(a=>a.id===account);if(!selected)throw new AdsError('Esta conta não está disponível para o painel.',{status:403});return new Response(null,{status:303,headers:{Location:await googleAdsLink(selected,campaign),'Cache-Control':'private, no-store','Vary':'Cookie'}});}
-    if(path==='/campaign-changes'){const account=url.searchParams.get('account'),campaign=url.searchParams.get('campaign');campaignChanges.scope(account,campaign);if(!(await catalog()).accounts.some(a=>a.id===account))throw new AdsError('Conta indisponível para este painel.',{status:403});return authJSON({items:campaignChanges.list(account,campaign),types:changeTypes});}
+    if(path==='/campaign-changes'){const account=url.searchParams.get('account'),campaign=url.searchParams.get('campaign');campaignChanges.scope(account,campaign);if(!(await catalog()).accounts.some(a=>a.id===account))throw new AdsError('Conta indisponível para este painel.',{status:403});const recent=url.searchParams.get('recent');if(recent!==null&&recent!=='7')throw new AdsError('Período de alterações inválido.',{status:400});const end=today();return authJSON({items:recent?campaignChanges.recent(account,campaign,shiftDay(end,-6),end):campaignChanges.list(account,campaign),types:changeTypes,...(recent?{start:shiftDay(end,-6),end}: {})});}
     if(path==='/budget')return authJSON(await budgets.read(url.searchParams.get('account'),url.searchParams.get('campaign')));
     if(path==='/budget-operation')return authJSON(await budgets.status(url.searchParams.get('id')));
     if(path==='/catalog')return authJSON({...await catalog(),settings:config(),links:links(),database:true});

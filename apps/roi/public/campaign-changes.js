@@ -1,4 +1,4 @@
-export function campaignChangePanel({api}){
+export function campaignChangePanel({api,onSaved=()=>{}}){
  const $=id=>document.getElementById(id),panel=$('campaign-changes'),form=$('change-form');
  const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -23,7 +23,7 @@ export function campaignChangePanel({api}){
  form.onsubmit=async event=>{
   event.preventDefault();if(saving||!context||!form.reportValidity())return;
   const current=version,body={...context,id:recordId,type:$('change-type').value,date:$('change-date').value,description:$('change-description').value};busy(true);message('Salvando…');
-  try{const data=await api('/campaign-changes',body);if(current!==version)return;items=data.items;render();reset();$('change-editor').open=false;message('Registro salvo.');}
+  try{const data=await api('/campaign-changes',body);if(current!==version)return;items=data.items;render();reset();$('change-editor').open=false;message('Registro salvo.');onSaved();}
   catch(error){if(current===version)message(error.message,true);}
   finally{if(current===version)busy(false);}
  };

@@ -6,8 +6,22 @@ import {tmpdir} from 'node:os';
 import {join,resolve,sep} from 'node:path';
 import {createCampaignChanges} from '../apps/roi/campaign-changes.mjs';
 import {createROIAPI} from '../apps/roi/api.mjs';
+import {today} from '../apps/roi/fx.mjs';
+import {shiftDay} from '../apps/roi/warehouse.mjs';
 const account='1234567890',campaign='42',other='9876543210';
 const note={account,campaign,date:'2026-10-20',type:'budget_increase',description:'Orçamento de R$ 100 para R$ 150.\nAcompanhar ROI.'};
+
+test('recent changes API includes the seven calendar days through today, excluding future, deleted and other campaign records',async()=>{
+ const db=new DatabaseSync(':memory:'),api=createROIAPI({db},{google:{configured:()=>false},admanager:{}}),store=createCampaignChanges(db),end=today(),start=shiftDay(end,-6);
+ db.prepare('INSERT OR REPLACE INTO roi_metadata VALUES (?,?,?)').run('catalog',JSON.stringify({accounts:[{id:account}],networks:[]}),new Date().toISOString());
+ try{
+  const recent=store.save({...note,date:end,description:'<img src=x onerror=alert(1)> orçamento confirmado'});db.prepare("UPDATE roi_campaign_changes SET source='google_ads' WHERE id=?").run(recent.id);
+  store.save({...note,date:start});store.save({...note,date:shiftDay(end,-7)});store.save({...note,date:shiftDay(end,1)});store.save({...note,date:end,campaign:'43'});store.save({...note,date:end,account:other});const deleted=store.save({...note,date:end});store.remove({...note,id:deleted.id});
+  const url='https://roi.test/apps/roi/api/campaign-changes?account='+account+'&campaign='+campaign;
+  const response=await api(new Request(url+'&recent=7'));assert.equal(response.status,200);const data=await response.json();assert.equal(data.start,start);assert.equal(data.end,end);assert.deepEqual(data.items.map(r=>r.date),[end,start]);assert.equal(data.items[0].source,'google_ads');assert.match(data.items[0].description,/<img/);
+  assert.equal((await(await api(new Request(url))).json()).items.length,4);assert.equal((await api(new Request(url+'&recent=999'))).status,400);assert.equal((await api(new Request(url.replace(account,other)+'&recent=7'))).status,403);
+ }finally{api.stopAuto();db.close();}
+});
 
 test('campaign changes persist, sort by event date, isolate account/campaign and update idempotently',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'roi-changes-')),path=join(dir,'data.sqlite');let db=new DatabaseSync(path);
