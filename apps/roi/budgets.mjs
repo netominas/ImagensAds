@@ -14,6 +14,24 @@ export function budgetAmount(current,mode,value){
 export function createBudgets(db,google,{accountFor}){
  db.exec(`CREATE TABLE IF NOT EXISTS roi_budget_operations(id TEXT PRIMARY KEY,account TEXT NOT NULL,resource TEXT NOT NULL,status TEXT NOT NULL,data TEXT NOT NULL,created TEXT NOT NULL,finished TEXT,error TEXT);
  CREATE UNIQUE INDEX IF NOT EXISTS roi_budget_operation_lock ON roi_budget_operations(account,resource) WHERE status IN ('CHECKING','SENDING','UNKNOWN');`);
+ db.exec(`CREATE TABLE IF NOT EXISTS roi_campaign_budgets(account TEXT NOT NULL,campaign TEXT NOT NULL,data TEXT NOT NULL,updated TEXT NOT NULL,PRIMARY KEY(account,campaign));
+ CREATE TABLE IF NOT EXISTS roi_budget_catalog(account TEXT PRIMARY KEY,checked TEXT NOT NULL,error TEXT);`);
+ const pending=new Map(),ttl=30*60000;
+ function saveValues(data){const updated=stamp(),save=db.prepare('INSERT OR REPLACE INTO roi_campaign_budgets VALUES (?,?,?,?)');for(const campaign of data.campaigns||[{id:data.campaign}])save.run(data.account,campaign.id,JSON.stringify({account:data.account,campaign:campaign.id,currency:data.currency,period:data.period,micros:data.next??data.micros,shared:data.shared,resource:data.resource}),updated);}
+ async function refreshAccount(a){
+  if(pending.has(a.id))return pending.get(a.id);
+  const previous=db.prepare('SELECT * FROM roi_budget_catalog WHERE account=?').get(a.id);if(previous&&Date.now()-Date.parse(previous.checked)<(previous.error?60000:ttl))return;
+  const task=(async()=>{try{
+   const started=stamp();const rows=await google.search(a.id,"SELECT campaign.id, customer.currency_code, campaign_budget.resource_name, campaign_budget.amount_micros, campaign_budget.total_amount_micros, campaign_budget.period, campaign_budget.explicitly_shared FROM campaign WHERE campaign.status != 'REMOVED'",a.mcc),values=[];
+   for(const row of rows){const b=row.campaignBudget,campaign=String(row.campaign?.id),currency=row.customer?.currencyCode||a.currency;if(!b)continue;const micros=String(b.period==='CUSTOM_PERIOD'?b.totalAmountMicros:b.amountMicros);if(!/^\d{1,20}$/.test(campaign)||!['DAILY','CUSTOM_PERIOD'].includes(b.period)||!/^\d+$/.test(micros)||!Number.isSafeInteger(Number(micros))||! /^[A-Z]{3}$/.test(currency||'')||!new RegExp('^customers/'+a.id+'/campaignBudgets/\\d+$').test(b.resourceName||''))continue;values.push({account:a.id,campaign,currency,period:b.period,micros,shared:Boolean(b.explicitlyShared),resource:b.resourceName});}
+   db.exec('BEGIN IMMEDIATE');try{db.prepare('DELETE FROM roi_campaign_budgets WHERE account=? AND updated<=?').run(a.id,started);for(const data of values){const newer=db.prepare('SELECT updated FROM roi_campaign_budgets WHERE account=? AND campaign=?').get(a.id,data.campaign);if(!newer||newer.updated<=started)saveValues(data);}db.prepare('INSERT OR REPLACE INTO roi_budget_catalog VALUES (?,?,NULL)').run(a.id,stamp());db.exec('COMMIT');}catch(error){db.exec('ROLLBACK');throw error;}
+  }catch{db.prepare('INSERT OR REPLACE INTO roi_budget_catalog VALUES (?,?,?)').run(a.id,stamp(),'Última consulta de orçamento indisponível; valor armazenado preservado.');}})();pending.set(a.id,task);try{await task;}finally{pending.delete(a.id);}
+ }
+ async function listing(accounts){
+  if(!Array.isArray(accounts)||!accounts.length||accounts.length>120||new Set(accounts).size!==accounts.length)fail('Selecione contas válidas.');const available=[];for(const account of accounts)available.push(await accountFor(account));
+  let cursor=0;await Promise.all(Array.from({length:Math.min(3,available.length)},async()=>{for(;;){const a=available[cursor++];if(!a)break;await refreshAccount(a);}}));
+  const items=[],warnings=[];for(const a of available){const info=db.prepare('SELECT * FROM roi_budget_catalog WHERE account=?').get(a.id);if(info?.error)warnings.push({account:a.id,message:info.error});for(const row of db.prepare('SELECT data,updated FROM roi_campaign_budgets WHERE account=?').all(a.id))items.push({...JSON.parse(row.data),updated:row.updated,stale:Boolean(info?.error)||Date.now()-Date.parse(row.updated)>ttl});}return {items,warnings};
+ }
  db.prepare("UPDATE roi_budget_operations SET status='FAILED',error='Conferência interrompida antes do envio.' WHERE status='CHECKING'").run();
  db.prepare("UPDATE roi_budget_operations SET status='UNKNOWN',error='Envio interrompido. Confira o orçamento no Google Ads antes de tentar novamente.' WHERE status='SENDING'").run();
  const get=operation=>{if(typeof operation!=='string'||!/^[a-f0-9]{32}$/.test(operation))fail('Operação inválida.');const row=db.prepare('SELECT * FROM roi_budget_operations WHERE id=?').get(operation);if(!row)fail('Operação não encontrada.',404);return {...row,data:JSON.parse(row.data)};};
@@ -30,7 +48,7 @@ export function createBudgets(db,google,{accountFor}){
   const campaigns=affected.map(r=>({id:String(r.campaign.id),name:r.campaign.name,status:r.campaign.status})).sort((x,y)=>x.id.localeCompare(y.id));
   if(!campaigns.some(c=>c.id===campaign)||campaigns.some(c=>!/^\d{1,20}$/.test(c.id)))fail('Não foi possível confirmar as campanhas vinculadas ao orçamento.',502);
   const blocked=db.prepare("SELECT status FROM roi_budget_operations WHERE account=? AND resource=? AND status IN ('CHECKING','SENDING','UNKNOWN')").get(a.id,b.resourceName);
-  return {account:a.id,campaign,name:row.campaign.name,currency,resource:b.resourceName,period:b.period,micros,campaigns,shared:Boolean(b.explicitlyShared)||campaigns.length>1,blocked:blocked?.status||null};
+  const data={account:a.id,campaign,name:row.campaign.name,currency,resource:b.resourceName,period:b.period,micros,campaigns,shared:Boolean(b.explicitlyShared)||campaigns.length>1,blocked:blocked?.status||null};try{saveValues(data);}catch{/* A display cache failure must not prevent the live confirmation. */}return data;
  }
  const operations=data=>[{campaignBudgetOperation:{update:{resourceName:data.resource,[data.period==='DAILY'?'amountMicros':'totalAmountMicros']:data.next},updateMask:data.period==='DAILY'?'amount_micros':'total_amount_micros'}}];
  function publicOperation(row){return {id:row.id,status:row.status,...row.data,error:row.error};}
@@ -58,7 +76,7 @@ export function createBudgets(db,google,{accountFor}){
    for(const c of data.campaigns){const noteId=createHash('sha256').update(original.id+':'+c.id).digest('hex').slice(0,32);db.prepare('INSERT INTO roi_campaign_changes(id,account,campaign,date,type,description,created,updated,source,budget_operation) VALUES (?,?,?,?,?,?,?,?,?,?)').run(noteId,data.account,c.id,today(),Number(data.next)>Number(data.micros)?'budget_increase':'budget_decrease',description,stamp(),stamp(),'google_ads',original.id);}
    db.prepare("UPDATE roi_budget_operations SET status='DONE',finished=? WHERE id=?").run(stamp(),original.id);db.exec('COMMIT');
   }catch{db.exec('ROLLBACK');db.prepare("UPDATE roi_budget_operations SET status='UNKNOWN',error='O Google confirmou a alteração, mas o histórico precisa de revisão. Não repita o envio.' WHERE id=?").run(original.id);fail(get(original.id).error,409);}
-  return publicOperation(get(original.id));
+  try{saveValues(data);}catch{/* Confirmed changes and their audit entries remain authoritative. */}return publicOperation(get(original.id));
  }
- return {read,preview,apply,status:async operation=>{const row=get(operation);await accountFor(row.account);return publicOperation(row);},activeJobs};
+ return {read,listing,preview,apply,status:async operation=>{const row=get(operation);await accountFor(row.account);return publicOperation(row);},activeJobs};
 }

@@ -15,6 +15,16 @@ test('budgets accept exact amounts and percentage increases without accepting in
  assert.equal(budgetAmount('100000000','increase_percent','20'),'120000000');assert.equal(budgetAmount('99990000','increase_percent','20'),'119990000');assert.equal(budgetAmount('100000000','amount','85,50'),'85500000');
  for(const [mode,value]of [['amount','0'],['amount','-20'],['amount','1e4'],['amount','1.234'],['amount','1000001'],['amount',100],['unknown','20'],['amount','100']])assert.throws(()=>budgetAmount('100000000',mode,value));
 });
+test('budget listing batches by account, persists its cache and updates all shared labels after a confirmed edit',async()=>{
+ const f=fixture({shared:true});let reads=0;const search=f.google.search;f.google.search=async(...args)=>{reads++;return search(...args);};
+ try{
+  const [first,duplicate]=await Promise.all([f.service.listing([account]),f.service.listing([account])]);assert.equal(reads,1);assert.equal(first.items[0].micros,'100000000');assert.equal(duplicate.items[0].currency,'BRL');assert.equal(first.items[0].shared,true);
+  const reopened=createBudgets(f.db,f.google,f.options);assert.equal((await reopened.listing([account])).items[0].micros,'100000000');assert.equal(reads,1);
+  const q=await f.preview();await f.service.apply({id:q.id,confirmShared:true});const before=reads,updated=await f.service.listing([account]);assert.equal(reads,before);assert.deepEqual(updated.items.map(r=>r.micros),['120000000','120000000']);
+  f.db.prepare("UPDATE roi_budget_catalog SET checked='2000-01-01T00:00:00Z'").run();f.google.search=async()=>{reads++;throw Error('offline');};const stale=await f.service.listing([account]);assert.equal(stale.items.length,2);assert.ok(stale.items.every(r=>r.stale&&r.micros==='120000000'));assert.equal(stale.warnings.length,1);const attempted=reads;await f.service.listing([account]);assert.equal(reads,attempted);
+  await assert.rejects(f.service.listing(['1111111111']),e=>e.status===403);
+ }finally{f.db.close();}
+});
 test('preview only validates, apply mutates only budget and writes immutable history once, including all shared campaigns',async()=>{
  const f=fixture({shared:true});try{const q=await f.preview();assert.equal(f.micros,'100000000');assert.equal(f.calls.length,1);assert.equal(f.calls[0].options.validateOnly,true);assert.equal(f.notes.list(account,campaign).length,0);
  assert.deepEqual(f.calls[0].ops,[{campaignBudgetOperation:{update:{resourceName:resource,amountMicros:'120000000'},updateMask:'amount_micros'}}]);
