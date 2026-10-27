@@ -32,7 +32,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       const origin=env.APP_ORIGIN||`http://${req.headers.host}`,url=new URL(req.url,origin);
       const originalPath=url.pathname;
       const redirect=location=>new Response(null,{status:303,headers:{Location:location,'Cache-Control':'no-store'}});
-      if(['/apps/roi','/apps/roi/','/apps/roi/sites','/apps/roi/vinculos','/apps/roi/redes'].includes(originalPath)){
+      if(['/apps/roi','/apps/roi/','/apps/roi/sites','/apps/roi/vinculos','/apps/roi/redes','/apps/roi/pagamentos'].includes(originalPath)){
         const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);if(denied)return send(redirect('/login'));
         if(!['GET','HEAD'].includes(req.method))return send(authJSON({error:'Método não permitido.'},405));
         if(originalPath==='/apps/roi')return send(redirect('/apps/roi/'));
@@ -121,7 +121,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
         return;
       }
       if(originalPath.startsWith('/apps/roi/')){
-        const asset=originalPath.slice('/apps/roi/'.length);if(!new Set(['app.js','style.css','campaign-report.js','campaign-changes.js','budget-editor.js','recent-changes.js','gam-metrics.js','ads-metrics.js','brand.svg']).has(asset))return send(authJSON({error:'Não encontrado.'},404));
+        const asset=originalPath.slice('/apps/roi/'.length);if(!new Set(['app.js','style.css','campaign-report.js','campaign-changes.js','budget-editor.js','recent-changes.js','gam-metrics.js','ads-metrics.js','payments.js','brand.svg']).has(asset))return send(authJSON({error:'Não encontrado.'},404));
         return send(new Response(await readFile(new URL('./apps/roi/public/'+asset,import.meta.url)),{headers:{'Content-Type':asset.endsWith('.svg')?'image/svg+xml':asset.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8','Cache-Control':'no-store'}}));
       }
       if(originalPath.startsWith('/apps/google-ads/')){

@@ -56,5 +56,24 @@ export function createAdManager({env=process.env,fetcher=fetch,wait=ms=>new Prom
    }if(status==='FAILED')throw new AdsError('O relatório do Ad Manager falhou.');await wait(3000);
   }throw new AdsError('O relatório está demorando. Tente um período menor.');
  }
- return {soap,keys,report,async networks(){return array(await soap('','NetworkService','getAllNetworks')).map(n=>({id:String(n.networkCode),name:n.displayName,currency:n.currencyCode,timezone:n.timeZone}));}};
+ async function paymentProfiles(network,{resource,saveResource=()=>{}}={}){
+  if(!/^\d{1,20}$/.test(network))throw new AdsError('Rede inválida.',{status:400});
+  const prefix='networks/'+network+'/';
+  async function rest(path,body){
+   if(!path.startsWith(prefix)||!/^networks\/\d+\/[a-zA-Z0-9/:]+$/.test(path))throw new AdsError('Recurso do relatório inválido.');
+   const response=await fetcher('https://admanager.googleapis.com/v1/'+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+await access(),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(60000)}),data=await response.json();
+   if(!response.ok){const reason=(data.error?.details||[]).map(d=>d.reason||'').join(' ');throw new AdsError(reason.includes('DIMENSION_VIEW_NOT_ALLOWED')?'O Ad Manager não autorizou as dimensões de perfil de pagamento nesta rede.':reason.includes('SERVICE_DISABLED')?'A API REST do Ad Manager precisa ser habilitada no projeto Google Cloud.':'O Ad Manager não disponibilizou os perfis de pagamento com este acesso.',{status:422});}return data;
+  }
+  if(resource&&!new RegExp('^'+prefix+'reports/\\d+$').test(resource))throw new AdsError('Relatório inválido.');
+  if(!resource){const created=await rest(prefix+'reports',{displayName:'AK Workspace - Perfis de pagamento',visibility:'HIDDEN',reportDefinition:{dimensions:['PAYMENT_PROFILE_ID','PAYMENT_PROFILE_NAME'],metrics:['AD_EXCHANGE_IMPRESSIONS'],dateRange:{relative:'LAST_30_DAYS'},reportType:'HISTORICAL'}});resource=created.name;if(!new RegExp('^'+prefix+'reports/\\d+$').test(resource||''))throw new AdsError('Relatório sem identificador válido.');saveResource(resource);}
+  let operation=await rest(resource+':run',{});
+  for(let attempt=0;!operation.done&&attempt<12;attempt++){if(typeof operation.name!=='string')throw new AdsError('Execução de relatório inválida.');await wait(Math.min(5000*2**attempt,15000));operation=await rest(operation.name);}
+  if(!operation.done||operation.error)throw new AdsError('O relatório de perfis de pagamento não foi concluído. Tente atualizar novamente.');
+  const result=operation.response?.reportResult;if(typeof result!=='string'||!result.startsWith(resource+'/results/'))throw new AdsError('Resultado de relatório inválido.');
+  const rows=await rest(result+':fetchRows'),profiles=new Map();
+  if(rows.nextPageToken)throw new AdsError('O relatório de perfis excedeu o limite de leitura.');
+  for(const row of rows.rows||[]){const values=row.dimensionValues||[],id=String(values[0]?.stringValue??values[0]?.intValue??'');if(id&&id!=='0'&&id!=='(not applicable)'&&/^[\d-]+$/.test(id))profiles.set(id,{id,name:String(values[1]?.stringValue||''),status:'REPORT_LAST_30_DAYS'});}
+  return [...profiles.values()];
+ }
+ return {soap,keys,report,paymentProfiles,async networks(){return array(await soap('','NetworkService','getAllNetworks')).map(n=>({id:String(n.networkCode),name:n.displayName,currency:n.currencyCode,timezone:n.timeZone}));}};
 }

@@ -1,3 +1,4 @@
+import {createPayments} from './payments.mjs';
 import {createBudgets} from './budgets.mjs';
 import {createCampaignChanges,changeTypes} from './campaign-changes.mjs';
 import {createGoogleAdsLinks} from './google-ads-links.mjs';
@@ -36,6 +37,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   const data={accounts:ads.accounts,networks,warnings:ads.warnings,networks_updated_at:new Date().toISOString(),updated_at:new Date().toISOString(),seeded:false};warehouse.putMeta('catalog',data);return data;})();try{return await catalogPending;}finally{catalogPending=null;}
  }
  async function catalog(){return warehouse.meta('catalog')||await refreshCatalog();}
+ const payments=createPayments(db,{google,admanager,catalog});
  async function refreshNetworks(){
   if(networksPending)return networksPending;
   networksPending=(async()=>{const prior=await catalog(),found=await admanager.networks(),networks=found.map(n=>({...n,available:true}));for(const n of prior.networks)if(config()?.networks.includes(n.id)&&!networks.some(item=>item.id===n.id))networks.push({...n,available:false});const data={...prior,networks,networks_updated_at:new Date().toISOString()};warehouse.putMeta('catalog',data);return {...data,settings:config(),links:links()};})();try{return await networksPending;}finally{networksPending=null;}
@@ -77,6 +79,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   if(!['GET','HEAD'].includes(method)&&!sameOrigin(request))return authJSON({error:'Origem não permitida.'},403);
   try{
    if(method==='GET'){
+    if(path==='/payments')return authJSON(await payments.list());
     if(path==='/google-ads-link'){const account=url.searchParams.get('account'),campaign=url.searchParams.get('campaign');if(!/^\d{10}$/.test(account||'')||!/^\d{1,20}$/.test(campaign||''))throw new AdsError('Conta ou campanha inválida.',{status:400});const data=await catalog(),selected=data.accounts.find(a=>a.id===account);if(!selected)throw new AdsError('Esta conta não está disponível para o painel.',{status:403});return new Response(null,{status:303,headers:{Location:await googleAdsLink(selected,campaign),'Cache-Control':'private, no-store','Vary':'Cookie'}});}
     if(path==='/campaign-changes'){const account=url.searchParams.get('account'),campaign=url.searchParams.get('campaign');campaignChanges.scope(account,campaign);if(!(await catalog()).accounts.some(a=>a.id===account))throw new AdsError('Conta indisponível para este painel.',{status:403});const recent=url.searchParams.get('recent');if(recent!==null&&recent!=='7')throw new AdsError('Período de alterações inválido.',{status:400});const end=today();return authJSON({items:recent?campaignChanges.recent(account,campaign,shiftDay(end,-6),end):campaignChanges.list(account,campaign),types:changeTypes,...(recent?{start:shiftDay(end,-6),end}: {})});}
     if(path==='/campaign-budgets')return authJSON(await budgets.listing((url.searchParams.get('accounts')||'').split(',')));
@@ -96,6 +99,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
    if(path==='/budget-apply'&&method==='POST')return authJSON(await budgets.apply(body));
    if(path==='/campaign-changes'){campaignChanges.scope(body.account,body.campaign);if(!(await catalog()).accounts.some(a=>a.id===body.account))throw new AdsError('Conta indisponível para este painel.',{status:403});return authJSON(method==='DELETE'?campaignChanges.remove(body):campaignChanges.save(body));}
    if(path==='/networks/refresh'&&method==='POST')return authJSON(await refreshNetworks());
+   if(path==='/payments/refresh'&&method==='POST')return authJSON(await payments.refresh());
    if(path==='/settings'&&method==='POST'){const selected=scopeFrom(body,await catalog(),{dates:false});db.prepare('INSERT OR REPLACE INTO roi_settings VALUES (1,?)').run(JSON.stringify(selected));return authJSON({settings:selected});}
    if(path==='/links'&&method==='DELETE'){if(typeof body.id!=='string'||!/^[a-f0-9]{32}$/.test(body.id))throw new AdsError('Vínculo inválido.',{status:400});db.prepare('DELETE FROM roi_links WHERE id=?').run(body.id);warehouse.touch();return authJSON({links:links()});}
    if(path==='/links'&&method==='POST'){
