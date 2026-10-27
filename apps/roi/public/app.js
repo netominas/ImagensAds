@@ -1,3 +1,4 @@
+import {stickyReportHeader} from './sticky-report.js';
 import {reportPeriod} from './report-period.js';
 import {paymentPanel} from './payments.js';
 import {recentChanges} from './recent-changes.js';
@@ -25,6 +26,7 @@ const gamCells=r=>'<td>'+money(r.ecpm)+'</td><td>'+metricMoney(r.cpc)+'</td><td>
 const money=v=>v==null?'—':new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v),pct=v=>v==null?'—':new Intl.NumberFormat('pt-BR',{style:'percent',minimumFractionDigits:1,maximumFractionDigits:1}).format(v),pretty=id=>String(id||'').replace(/^(\d{3})(\d{3})(\d{4})$/,'$1-$2-$3');
 const selectValues=id=>[...$(id).selectedOptions].map(o=>o.value),iso=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
 async function api(path,body,method='POST'){const r=await secureFetch('/apps/roi/api'+path,body?{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const data=await r.json();if(!r.ok)throw Error(data.error||'Falha na consulta.');return data;}
+stickyReportHeader($('report-panel'));
 const paymentsUI=paymentPanel({api});
 const utilityView=()=>['networks','payments'].includes(state.view);
 const recentUI=recentChanges({api});
