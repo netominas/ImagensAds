@@ -77,6 +77,7 @@ function renderCampaignDetail(){
  if(!detail)return;
  const rows=selectedCampaignRows(),name=rows[0]?.name||'Campanha '+state.campaign;
  $('campaign-budget').onclick=()=>void budgetsUI.open(state.account,state.campaign);$('campaign-budget').dataset.budgetAccount=state.account;$('campaign-budget').dataset.budgetCampaign=state.campaign;$('campaign-detail-name').textContent=name;$('campaign-detail-name').title=name;$('campaign-detail-meta').textContent='ID '+state.campaign+' · '+(rows[0]?.account_name||'Conta '+pretty(state.account))+($('site').value?' · '+$('site').value:'');
+ $('campaign-detail-links').innerHTML=googleAdsID({account:state.account,campaign:state.campaign},'↗ Abrir no Google Ads')+finalURLCell({final_urls:rows.flatMap(row=>row.final_urls||[])},true);
  $('campaign-back').href=campaignPath($('site').value);$('campaign-back').onclick=e=>{if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button!==0)return;e.preventDefault();navigate(campaignPath($('site').value));};
  $('breadcrumb').textContent='Relatório da campanha';$('page-title').textContent=name;document.title=name+' · ROI AK Workspace';
 }
@@ -107,14 +108,14 @@ function renderDailyTable(){
 function downloadDailyCSV(safe){
  const rows=[['Campanha','ID campanha','Conta Google Ads','Site','Data','Custo (BRL)','Receita AdX (BRL)','Lucro de mídia (BRL)','ROI (%)','eCPM AdX (BRL)','PMR (%)','Taxa de conversão (%)','Custo por conversão (BRL)','CPC AdX (BRL)'],...state.exportRows.map(d=>[$('campaign-detail-name').textContent,state.campaign,state.account,$('site').value,d.date,d.cost,d.revenue,d.profit,d.roi==null?'':d.roi*100,d.ecpm,d.pmr==null?'':d.pmr*100,d.conversion_rate==null?'':d.conversion_rate*100,d.cost_per_conversion,d.cpc])],csv='\ufeff'+rows.map(r=>r.map(safe).join(';')).join('\r\n'),url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='roi-campanha-'+state.campaign+'-'+state.run.start+'-'+state.run.end+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-function googleAdsID(row){
+function googleAdsID(row,label=row.campaign){
  if(!/^\d{10}$/.test(row.account||'')||!/^\d{1,20}$/.test(row.campaign||''))return esc(row.campaign);
  const path='/apps/roi/api/google-ads-link?'+new URLSearchParams({account:row.account,campaign:row.campaign});
- return '<a class="campaign-ads-link" href="'+esc(path)+'" target="_blank" rel="noopener noreferrer" title="Abrir esta campanha no Google Ads" aria-label="Abrir campanha '+esc(row.campaign)+' no Google Ads">'+esc(row.campaign)+'</a>';
+ return '<a class="campaign-ads-link" href="'+esc(path)+'" target="_blank" rel="noopener noreferrer" title="Abrir esta campanha no Google Ads" aria-label="Abrir campanha '+esc(row.campaign)+' no Google Ads">'+esc(label)+'</a>';
 }
-function finalURLCell(row){
+function finalURLCell(row,showLabel=false){
  const urls=[...new Set(Array.isArray(row.final_urls)?row.final_urls:[])].flatMap(value=>{try{const u=new URL(value);return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password?[u]:[];}catch{return [];}});
- return urls.map((u,i)=>'<a class="campaign-url-link" href="'+esc(u.href)+'" target="_blank" rel="noopener noreferrer" title="'+esc(u.href)+'" aria-label="Abrir URL final'+(urls.length>1?' '+(i+1):'')+': '+esc(u.href)+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg></a>').join('');
+ return urls.map((u,i)=>'<a class="campaign-url-link" href="'+esc(u.href)+'" target="_blank" rel="noopener noreferrer" title="'+esc(u.href)+'" aria-label="Abrir URL final'+(urls.length>1?' '+(i+1):'')+': '+esc(u.href)+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>'+(showLabel?(urls.length>1?'Abrir página '+(i+1)+' da campanha':'Abrir página da campanha'):'')+'</a>').join('');
 }
 function renderTable(){recentUI.close();if(state.view==='campaign'){renderDailyTable();return;}$('report-panel').classList.remove('daily-report');const isSites=state.view==='sites',hideSite=!isSites&&Boolean($('site').value),rows=rowsFiltered();state.exportRows=rows;const columns=isSites?[['site','Site'],['campaigns','Campanhas'],['cost','Custo vinculado'],['revenue','Receita vinculada'],['profit','Lucro de mídia'],['roi','ROI'],['ecpm','eCPM'],['cpc','CPC'],['pmr','PMR'],['pending','Pendências']]:[['name','Nome da campanha'],['site','Site'],['cost','Custo'],['revenue','Receita AdX'],['profit','Lucro de mídia'],['roi','ROI %'],['ecpm','eCPM'],['pmr','PMR'],['conversion_rate','Taxa de conversão'],['cost_per_conversion','Custo / conversão'],['cpc','CPC']];
  if(hideSite)columns.splice(1,1);$('report-panel').classList.toggle('single-site-campaigns',hideSite);$('report-panel').classList.toggle('campaign-report',!isSites);
