@@ -7,7 +7,7 @@ import {createROIAPI} from '../apps/roi/api.mjs';
 test('payment profiles read local storage, refresh once per account, retain valid data on failure and persist on recreation',async()=>{
  const db=new DatabaseSync(':memory:');let calls=0,fail=false,release;
  const gate=new Promise(r=>release=r),catalog=async()=>({accounts:[{id:'1234567890',mcc:'9999999999',name:'Conta'}],networks:[{id:'1234',name:'Rede'}]});
- const google={search:async(id,query,mcc)=>{calls++;assert.equal(id,'1234567890');assert.equal(mcc,'9999999999');assert.match(query,/FROM billing_setup$/);await gate;if(fail)throw Error('secret-token');return [{billingSetup:{id:'10',status:'APPROVED',paymentsAccountInfo:{paymentsProfileId:'1234-5678-9012',paymentsProfileName:'Perfil',paymentsAccountId:'1234-5678-9012-3456'}}}];}};
+ const google={search:async(id,query,mcc)=>{if(query.includes('FROM customer_client'))return [{customerClient:{id:'1234567890',status:'ENABLED'}}];calls++;assert.equal(id,'1234567890');assert.equal(mcc,'9999999999');assert.match(query,/FROM billing_setup$/);await gate;if(fail)throw Error('secret-token');return [{billingSetup:{id:'10',status:'APPROVED',paymentsAccountInfo:{paymentsProfileId:'1234-5678-9012',paymentsProfileName:'Perfil',paymentsAccountId:'1234-5678-9012-3456'}}}];}};
  const admanager={paymentProfiles:async(id,{resource,saveResource})=>{assert.equal(id,'1234');if(!resource)saveResource('networks/1234/reports/1');else assert.equal(resource,'networks/1234/reports/1');return [];}};
  const payments=createPayments(db,{google,admanager,catalog});
  try{
