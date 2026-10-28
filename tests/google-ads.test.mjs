@@ -76,7 +76,7 @@ test('AK session protects Google Ads pages and APIs; drafts, images and existing
  try{
   for(const path of ['/apps/google-ads/','/apps/google-ads/criar']){const r=await fetch(base+path,{redirect:'manual'});assert.equal(r.status,303);assert.equal(r.headers.get('location'),'/login');}
   for(const path of ['accounts','creator/status','drafts','image','job','health'])assert.equal((await fetch(base+api+path)).status,401);
-  for(const path of ['/apps/google-ads/private/create.html','/apps/google-ads/api.mjs','/runtime.env','/.env','/data/adstudio.sqlite','/apps/google-ads/../../private/dashboard.html'])assert.equal((await fetch(base+path)).status,404);
+  for(const path of ['/apps/google-ads/private/create.html','/apps/google-ads/api.mjs','/apps/google-ads/briefing.mjs','/runtime.env','/.env','/data/adstudio.sqlite','/apps/google-ads/../../private/dashboard.html'])assert.equal((await fetch(base+path)).status,404);
   assert.equal((await fetch(base+'/apps/google-ads/creator.js')).status,200);
   const login=await send('/api/login',{email:env.ADMIN_EMAIL,password:'test-password-only-for-this-suite'});assert.equal(login.status,200);cookie=login.headers.get('set-cookie').split(';')[0];
   for(const path of ['/','/apps/criativos/','/apps/google-ads/','/apps/google-ads/criar'])assert.equal((await send(path,null,'GET')).status,200);

@@ -10,18 +10,23 @@ export function publicURL(value){
  if(!['http:','https:'].includes(u.protocol)||u.username||u.password||u.hash||u.port||u.hostname==='localhost'||u.hostname.endsWith('.local')||u.hostname.endsWith('.internal'))throw new AdsError('Use uma URL pública HTTP/HTTPS sem credenciais ou portas alternativas.',{status:400});return u;
 }
 export function validate(input,complete=false){
- const p={...input};customerId(p.account_id);
- if(!['SEARCH','DISPLAY'].includes(p.type))throw new AdsError('Este criador aceita Pesquisa e Display. Os demais formatos ainda não estão implementados.',{status:400});
- for(const [k,max,label]of [['theme',2000,'Tema'],['name',160,'Nome'],['business_name',25,'Nome comercial']])p[k]=text(p[k],max,label);
- p.url=publicURL(p.url).href;
- if(!Object.hasOwn(countries,p.country)||!Object.hasOwn(languages,p.language))throw new AdsError('País ou idioma inválido.',{status:400});
- for(const k of ['budget','cpc_bid']){p[k]=Number(p[k]);if(!Number.isFinite(p[k])||p[k]<=0||p[k]>1000000||Math.round(p[k]*1e6)<1)throw new AdsError('Orçamento e CPC devem ser positivos e até 1.000.000 na moeda da conta.',{status:400});}
- p.context=text(p.context||'',14000,'Contexto',0);p.political=p.political===true;
- for(const [k,min,max,limit]of [['headlines',p.type==='SEARCH'?3:1,p.type==='SEARCH'?15:5,30],['descriptions',p.type==='SEARCH'?2:1,p.type==='SEARCH'?4:5,90]]){
-  if(!Array.isArray(p[k])||p[k].length>max||(complete&&p[k].length<min))throw new AdsError(`${k}: use de ${min} a ${max} textos.`,{status:400});
+ if(!input||typeof input!=='object'||Array.isArray(input))throw new AdsError('Briefing inválido.',{status:400});
+ const p={...input},optional=v=>v===undefined||v===null||v==='';
+ p.account_id=optional(p.account_id)?'':String(p.account_id).trim().replace(/-/g,'');if(p.account_id||complete)customerId(p.account_id);
+ p.type=p.type||'';if(p.type&&!['SEARCH','DISPLAY'].includes(p.type))throw new AdsError('Este criador aceita Pesquisa e Display. Os demais formatos ainda não estão implementados.',{status:400});
+ if(complete&&!p.type)throw new AdsError('Defina o tipo de campanha no prompt ou na revisão.',{status:400});
+ for(const [k,max,label]of [['theme',2000,'Tema'],['name',160,'Nome'],['business_name',25,'Nome comercial']])p[k]=text(p[k]||'',max,label,complete&&(k==='name'||k==='business_name'&&p.type==='DISPLAY')?1:0);
+ p.url=optional(p.url)?'':publicURL(p.url).href;if(complete&&!p.url)throw new AdsError('Informe a URL de destino no prompt ou na revisão.',{status:400});
+ for(const [key,allowed,label]of [['country',countries,'País'],['language',languages,'Idioma']]){p[key]=p[key]||'';if(p[key]&&!Object.hasOwn(allowed,p[key])||complete&&!p[key])throw new AdsError(label+': defina uma opção disponível no prompt ou na revisão.',{status:400});}
+ for(const k of ['budget','cpc_bid','target_cpa']){if(optional(p[k]))p[k]=null;else{p[k]=Number(p[k]);if(!Number.isFinite(p[k])||p[k]<=0||p[k]>1000000||Math.round(p[k]*1e6)<1)throw new AdsError('Orçamento, CPC ou CPA informado deve ser positivo e até 1.000.000 na moeda da conta.',{status:400});}}
+ p.bidding_strategy=p.bidding_strategy||'';if(p.bidding_strategy&&!['MANUAL_CPC','MAXIMIZE_CLICKS','MAXIMIZE_CONVERSIONS'].includes(p.bidding_strategy))throw new AdsError('Estratégia de lances não implementada neste criador.',{status:400});
+ if(complete){if(p.budget===null)throw new AdsError('Defina o orçamento diário no prompt ou na revisão antes de criar.',{status:400});p.bidding_strategy=p.bidding_strategy||(p.target_cpa!==null?'MAXIMIZE_CONVERSIONS':p.cpc_bid!==null?'MANUAL_CPC':'MAXIMIZE_CLICKS');if(p.bidding_strategy==='MANUAL_CPC'&&p.cpc_bid===null)throw new AdsError('CPC manual precisa de um lance. Informe no prompt ou escolha uma estratégia automática.',{status:400});if(p.bidding_strategy==='MAXIMIZE_CONVERSIONS'&&p.cpc_bid!==null)throw new AdsError('CPC máximo não se aplica a Maximizar conversões. Deixe o CPC vazio.',{status:400});if(p.bidding_strategy!=='MAXIMIZE_CONVERSIONS'&&p.target_cpa!==null)throw new AdsError('CPA desejado exige a estratégia Maximizar conversões.',{status:400});}
+ p.context=text(p.context||'',14000,'Prompt',0);p.political=p.political===true;
+ for(const [k,min,max,limit]of [['headlines',p.type==='SEARCH'?3:1,p.type==='DISPLAY'?5:15,30],['descriptions',p.type==='SEARCH'?2:1,p.type==='SEARCH'?4:5,90]]){
+  p[k]=p[k]??[];if(!Array.isArray(p[k])||p[k].length>max||(complete&&p[k].length<min))throw new AdsError(k+': confira a quantidade de textos exigida para o formato.',{status:400});
   p[k]=p[k].map(v=>text(v,limit,k));if(new Set(p[k]).size!==p[k].length)throw new AdsError('Remova textos duplicados.',{status:400});
  }
- for(const k of ['keywords','negatives']){if(!Array.isArray(p[k])||p[k].length>50)throw new AdsError('Lista de palavras-chave inválida.',{status:400});p[k]=[...new Set(p[k].map(v=>text(v,80,'Palavra-chave')))];}
+ for(const k of ['keywords','negatives']){p[k]=p[k]??[];if(!Array.isArray(p[k])||p[k].length>50)throw new AdsError('Lista de palavras-chave inválida.',{status:400});p[k]=[...new Set(p[k].map(v=>text(v,80,'Palavra-chave')))];}
  if(complete&&p.type==='SEARCH'&&!p.keywords.length)throw new AdsError('Adicione pelo menos uma palavra-chave de frase.',{status:400});
  p.long_headline=text(p.long_headline||'',90,'Título longo',complete&&p.type==='DISPLAY'?1:0);p.image_prompt=text(p.image_prompt||'',4000,'Descrição visual',0);
  if(!Array.isArray(p.policy_notes||[])||(p.policy_notes||[]).length>10)throw new AdsError('Observações inválidas.',{status:400});p.policy_notes=(p.policy_notes||[]).map(v=>text(v,2000,'Observação'));
@@ -57,11 +62,12 @@ export async function campaignReport(google,account,start,end){
 }
 export function operations(draft,geo,language,images=[]){
  const p=validate(draft.payload,true),cid=p.account_id,result=[],add=(kind,value)=>result.push({[kind+'Operation']:{create:value}});
+ const bid=p.bidding_strategy==='MANUAL_CPC'?{manualCpc:{}}:p.bidding_strategy==='MAXIMIZE_CONVERSIONS'?{maximizeConversions:p.target_cpa===null?{}:{targetCpaMicros:String(Math.round(p.target_cpa*1e6))}}:{targetSpend:p.cpc_bid===null?{}:{cpcBidCeilingMicros:String(Math.round(p.cpc_bid*1e6))}};
  const budget=`customers/${cid}/campaignBudgets/-1`,campaign=`customers/${cid}/campaigns/-2`,group=`customers/${cid}/adGroups/-3`;
  add('campaignBudget',{resourceName:budget,name:p.name+' | Orçamento',amountMicros:String(Math.round(p.budget*1e6)),deliveryMethod:'STANDARD',explicitlyShared:false});
- add('campaign',{resourceName:campaign,name:p.name,status:'PAUSED',advertisingChannelType:p.type,campaignBudget:budget,manualCpc:{},containsEuPoliticalAdvertising:p.political?'CONTAINS_EU_POLITICAL_ADVERTISING':'DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING',geoTargetTypeSetting:{positiveGeoTargetType:'PRESENCE'},networkSettings:{targetGoogleSearch:p.type==='SEARCH',targetSearchNetwork:false,targetPartnerSearchNetwork:false,targetContentNetwork:p.type==='DISPLAY'}});
+ add('campaign',{resourceName:campaign,name:p.name,status:'PAUSED',advertisingChannelType:p.type,campaignBudget:budget,...bid,containsEuPoliticalAdvertising:p.political?'CONTAINS_EU_POLITICAL_ADVERTISING':'DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING',geoTargetTypeSetting:{positiveGeoTargetType:'PRESENCE'},networkSettings:{targetGoogleSearch:p.type==='SEARCH',targetSearchNetwork:false,targetPartnerSearchNetwork:false,targetContentNetwork:p.type==='DISPLAY'}});
  add('campaignCriterion',{campaign,location:{geoTargetConstant:geo}});add('campaignCriterion',{campaign,language:{languageConstant:language}});
- add('adGroup',{resourceName:group,name:'Grupo principal',campaign,status:'ENABLED',cpcBidMicros:String(Math.round(p.cpc_bid*1e6)),type:p.type==='SEARCH'?'SEARCH_STANDARD':'DISPLAY_STANDARD',...(p.type==='DISPLAY'?{optimizedTargetingEnabled:false}:{})});
+ add('adGroup',{resourceName:group,name:'Grupo principal',campaign,status:'ENABLED',...(p.bidding_strategy==='MANUAL_CPC'?{cpcBidMicros:String(Math.round(p.cpc_bid*1e6))}:{}),type:p.type==='SEARCH'?'SEARCH_STANDARD':'DISPLAY_STANDARD',...(p.type==='DISPLAY'?{optimizedTargetingEnabled:false}:{})});
  if(p.type==='SEARCH')for(const [negative,words]of [[false,p.keywords],[true,p.negatives]])for(const word of words)add(negative?'campaignCriterion':'adGroupCriterion',{...(negative?{campaign,negative:true}:{adGroup:group,status:'ENABLED'}),keyword:{text:word,matchType:'PHRASE'}});
  const ad={finalUrls:[p.url]},texts={headlines:p.headlines.map(text=>({text})),descriptions:p.descriptions.map(text=>({text}))};
  if(p.type==='SEARCH')ad.responsiveSearchAd=texts;
