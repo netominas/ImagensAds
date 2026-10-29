@@ -1,3 +1,4 @@
+export function campaignTypeLabel(type){return ({SEARCH:'Pesquisa',PERFORMANCE_MAX:'PMax',DISPLAY:'Display',DEMAND_GEN:'Geração de demanda',DISCOVERY:'Discovery',VIDEO:'Vídeo',SHOPPING:'Shopping',MULTI_CHANNEL:'App',LOCAL:'Local',SMART:'Inteligente',HOTEL:'Hotel',LOCAL_SERVICES:'Serviços locais',TRAVEL:'Viagens'})[type]||'Não informado';}
 import {adsMetrics} from './ads-metrics.js';
 import {gamMetrics} from './gam-metrics.js';
 export function campaignRows(result,{account,campaign,site=''}){

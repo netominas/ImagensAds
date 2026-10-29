@@ -1,13 +1,14 @@
+import {campaignTypeLabel} from './campaign-report.js';
 export function budgetEditor({api,onChanged}){
  const $=id=>document.getElementById(id),dialog=$('budget-dialog'),form=$('budget-form');let current,quote,scope,busy=false,operation=null;
  const money=(micros,currency)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency}).format(Number(micros)/1e6);
  const values=new Map(),fetched=new Map(),pendingAccounts=new Set();
- function paint(){for(const button of document.querySelectorAll('.campaign-budget-button[data-budget-account]')){
+ function paint(){for(const badge of document.querySelectorAll('.campaign-type[data-type-account]')){const data=values.get(badge.dataset.typeAccount+':'+badge.dataset.typeCampaign);if(data?.campaign_type){badge.textContent=campaignTypeLabel(data.campaign_type);badge.title='Tipo de campanha no Google Ads: '+data.campaign_type;}}for(const button of document.querySelectorAll('.campaign-budget-button[data-budget-account]')){
   const data=values.get(button.dataset.budgetAccount+':'+button.dataset.budgetCampaign);
   if(data){const label=money(data.micros,data.currency)+(data.period==='DAILY'?'/dia':' total');button.textContent='✎ '+label;button.title='Alterar orçamento atual: '+label+(data.shared?' · compartilhado':'')+(data.stale?' · última consulta falhou; valor salvo':'')+(data.updated?' · consultado em '+new Date(data.updated).toLocaleString('pt-BR'):'');button.setAttribute('aria-label','Alterar orçamento da campanha '+button.dataset.budgetCampaign+': '+label);}
   else{button.textContent=pendingAccounts.has(button.dataset.budgetAccount)?'✎ …':'✎ —';button.title=pendingAccounts.has(button.dataset.budgetAccount)?'Carregando orçamento atual':'Orçamento indisponível. Clique para consultar e editar.';button.setAttribute('aria-label','Consultar orçamento da campanha '+button.dataset.budgetCampaign);}
  }}
- function rememberValue(data){for(const c of data.campaigns||[{id:data.campaign}])values.set(data.account+':'+c.id,{...data,campaign:c.id,micros:data.next??data.micros,updated:new Date().toISOString(),stale:false});paint();}
+ function rememberValue(data){for(const c of data.campaigns||[{id:data.campaign}])values.set(data.account+':'+c.id,{...values.get(data.account+':'+c.id),...data,campaign_type:c.type||(c.id===data.campaign?data.campaign_type:null)||values.get(data.account+':'+c.id)?.campaign_type||null,campaign:c.id,micros:data.next??data.micros,updated:new Date().toISOString(),stale:false});paint();}
  async function loadValues(){
   const accounts=[...new Set([...document.querySelectorAll('.campaign-budget-button[data-budget-account]')].map(b=>b.dataset.budgetAccount))].filter(a=>!pendingAccounts.has(a)&&Date.now()-(fetched.get(a)||0)>=30*60000);if(!accounts.length){paint();return;}
   accounts.forEach(a=>pendingAccounts.add(a));paint();
