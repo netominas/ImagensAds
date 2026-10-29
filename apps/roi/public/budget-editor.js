@@ -1,11 +1,11 @@
 import {campaignTypeLabel} from './campaign-report.js';
-export function budgetEditor({api,onChanged}){
+export function budgetEditor({api,onChanged,readOnly=false}){
  const $=id=>document.getElementById(id),dialog=$('budget-dialog'),form=$('budget-form');let current,quote,scope,busy=false,operation=null;
  const money=(micros,currency)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency}).format(Number(micros)/1e6);
  const values=new Map(),fetched=new Map(),pendingAccounts=new Set();
  function paint(){for(const badge of document.querySelectorAll('.campaign-type[data-type-account]')){const data=values.get(badge.dataset.typeAccount+':'+badge.dataset.typeCampaign);if(data?.campaign_type){badge.textContent=campaignTypeLabel(data.campaign_type);badge.title='Tipo de campanha no Google Ads: '+data.campaign_type;}}for(const button of document.querySelectorAll('.campaign-budget-button[data-budget-account]')){
   const data=values.get(button.dataset.budgetAccount+':'+button.dataset.budgetCampaign);
-  if(data){const label=money(data.micros,data.currency)+(data.period==='DAILY'?'/dia':' total');button.textContent='✎ '+label;button.title='Alterar orçamento atual: '+label+(data.shared?' · compartilhado':'')+(data.stale?' · última consulta falhou; valor salvo':'')+(data.updated?' · consultado em '+new Date(data.updated).toLocaleString('pt-BR'):'');button.setAttribute('aria-label','Alterar orçamento da campanha '+button.dataset.budgetCampaign+': '+label);}
+  if(data){const label=money(data.micros,data.currency)+(data.period==='DAILY'?'/dia':' total');button.textContent=(readOnly?'':'✎ ')+label;button.title=(readOnly?'Orçamento atual: ':'Alterar orçamento atual: ')+label+(data.shared?' · compartilhado':'')+(data.stale?' · última consulta falhou; valor salvo':'')+(data.updated?' · consultado em '+new Date(data.updated).toLocaleString('pt-BR'):'');button.setAttribute('aria-label','Alterar orçamento da campanha '+button.dataset.budgetCampaign+': '+label);}
   else{button.textContent=pendingAccounts.has(button.dataset.budgetAccount)?'✎ …':'✎ —';button.title=pendingAccounts.has(button.dataset.budgetAccount)?'Carregando orçamento atual':'Orçamento indisponível. Clique para consultar e editar.';button.setAttribute('aria-label','Consultar orçamento da campanha '+button.dataset.budgetCampaign);}
  }}
  function rememberValue(data){for(const c of data.campaigns||[{id:data.campaign}])values.set(data.account+':'+c.id,{...values.get(data.account+':'+c.id),...data,campaign_type:c.type||(c.id===data.campaign?data.campaign_type:null)||values.get(data.account+':'+c.id)?.campaign_type||null,campaign:c.id,micros:data.next??data.micros,updated:new Date().toISOString(),stale:false});paint();}
@@ -34,7 +34,7 @@ export function budgetEditor({api,onChanged}){
   finally{lock(false);}
  }
  async function open(account,campaign){
-  if(busy||dialog.open)return;scope={account,campaign};current=null;operation=null;resetQuote();form.reset();form.hidden=true;$('budget-check').hidden=true;$('budget-current').textContent='Consultando…';$('budget-name').textContent='Campanha '+campaign;message('Carregando orçamento atual do Google Ads…');dialog.showModal();lock(true);
+  if(readOnly||busy||dialog.open)return;scope={account,campaign};current=null;operation=null;resetQuote();form.reset();form.hidden=true;$('budget-check').hidden=true;$('budget-current').textContent='Consultando…';$('budget-name').textContent='Campanha '+campaign;message('Carregando orçamento atual do Google Ads…');dialog.showModal();lock(true);
   try{
    current=await api('/budget?'+new URLSearchParams(scope));rememberValue(current);$('budget-name').textContent=current.name;$('budget-current').textContent=money(current.micros,current.currency)+(current.period==='DAILY'?' por dia':' no total');$('budget-currency').textContent='Moeda da conta: '+current.currency;
    const existing=pending();if(existing?.account===account&&(existing.campaign===campaign||current.campaigns.some(c=>c.id===existing.campaign))){operation=existing.id;$('budget-check').hidden=false;message('Há um envio anterior a conferir. Use Consultar resultado.');}
@@ -63,5 +63,5 @@ export function budgetEditor({api,onChanged}){
   finally{lock(false);}
  };
  $('budget-check').onclick=()=>void check();
- return {open,bind(){document.querySelectorAll('[data-budget-account]').forEach(button=>button.onclick=()=>void open(button.dataset.budgetAccount,button.dataset.budgetCampaign));void loadValues();}};
+ return {open,bind(){if(!readOnly)document.querySelectorAll('[data-budget-account]').forEach(button=>button.onclick=()=>void open(button.dataset.budgetAccount,button.dataset.budgetCampaign));void loadValues();}};
 }

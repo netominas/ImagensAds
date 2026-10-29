@@ -1,3 +1,4 @@
+import {createUsers,canCampaign} from './lib/users.mjs';
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {Readable} from 'node:stream';
@@ -9,7 +10,7 @@ import {hashPassword,authSettings} from './lib/auth.mjs';
 import {timingSafeEqual} from 'node:crypto';
 import {memoryStore} from './lib/memory-store.mjs';
 import {serveJob} from './netlify/functions/job.mjs';
-import {login,logout,sessionStatus,requireSession,sameOrigin,authJSON} from './lib/auth.mjs';
+import {login,logout,sessionStatus,requireSession,getSession,sameOrigin,authJSON} from './lib/auth.mjs';
 import {createGoogleAdsAPI} from './apps/google-ads/api.mjs';
 import {createROIAPI} from './apps/roi/api.mjs';
 
@@ -17,8 +18,9 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
   const copyAPI=storage?createCopyAPI(storage,generateText):null;
   const googleAPI=storage?createGoogleAdsAPI(storage,{env,...(googleAds?{google:googleAds}:{}),...(googleGenerateText?{generateText:googleGenerateText}:{}),...(googleGenerateImage?{generateImage:googleGenerateImage}:{})}):null;
   const roiAPI=storage?createROIAPI(storage,{env,...(googleAds?{google:googleAds}:{}),...roiOptions}):null;
+  const users=storage?createUsers(storage.db,env):null;if(users)authStore.users=users;
   let activeJobs=0;
-  const allowed=new Set(['index.html','login.js','login.css','access.js','activate.html','activate.js','favicon.svg','dashboard.js','dashboard.css']);
+  const allowed=new Set(['index.html','login.js','login.css','access.js','activate.html','activate.js','favicon.svg','dashboard.js','dashboard.css','users.js','users.css']);
   const creativeAssets=new Set(['app.js','core.js','styles.css','copy.js','copy-core.js','copy.css']);
   const googleAssets=new Set(['app.js','creator.js','style.css','creator.css','session.js']);
   const server=createServer(async(req,res)=>{
@@ -32,6 +34,24 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       const origin=env.APP_ORIGIN||`http://${req.headers.host}`,url=new URL(req.url,origin);
       const originalPath=url.pathname;
       const redirect=location=>new Response(null,{status:303,headers:{Location:location,'Cache-Control':'no-store'}});
+      const session=await getSession(new Request(url,{headers:req.headers}),authStore,env);
+      if(session?.role==='reader'){
+        if(['/', '/dashboard'].includes(originalPath))return send(redirect('/apps/roi/'));
+        const publicReader=new Set(['/login','/index.html','/login.js','/login.css','/access.js','/favicon.svg','/api/session','/api/logout','/api/login','/.netlify/functions/login','/.netlify/functions/logout','/.netlify/functions/session']);
+        const roiPage=['/apps/roi','/apps/roi/','/apps/roi/sites'].includes(originalPath);
+        const roiFile=originalPath.startsWith('/apps/roi/')&&!originalPath.startsWith('/apps/roi/private/')&&!originalPath.startsWith('/apps/roi/api/');
+        if(!publicReader.has(originalPath)&&!roiPage&&!roiFile&&!originalPath.startsWith('/apps/roi/api/'))return send(authJSON({error:'Acesso não permitido.'},403));
+        if(roiPage&&url.searchParams.has('campaign')&&!canCampaign(session,url.searchParams.get('account'),url.searchParams.get('campaign')))return send(authJSON({error:'Campanha não autorizada.'},403));
+        if(['/apps/roi/vinculos','/apps/roi/redes','/apps/roi/pagamentos'].includes(originalPath))return send(authJSON({error:'Acesso não permitido.'},403));
+      }
+      if(originalPath==='/usuarios'){
+        if(!session)return send(redirect('/login'));
+        if(session.role!=='admin')return send(authJSON({error:'Acesso exclusivo do administrador.'},403));
+        if(!['GET','HEAD'].includes(req.method))return send(authJSON({error:'Método não permitido.'},405));
+        return send(new Response(await readFile(new URL('./private/users.html',import.meta.url)),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store'}}));
+      }
+      const isUsers=originalPath==='/api/users'||originalPath.startsWith('/api/users/');
+      if(isUsers){if(!session)return send(authJSON({error:'Entre novamente.'},401));if(session.role!=='admin')return send(authJSON({error:'Acesso exclusivo do administrador.'},403));}
       if(['/apps/roi','/apps/roi/','/apps/roi/sites','/apps/roi/vinculos','/apps/roi/redes','/apps/roi/pagamentos'].includes(originalPath)){
         const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);if(denied)return send(redirect('/login'));
         if(!['GET','HEAD'].includes(req.method))return send(authJSON({error:'Método não permitido.'},405));
@@ -77,7 +97,8 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
         for await(const chunk of req){size+=chunk.length;if(size>limit){res.writeHead(413).end();return;}chunks.push(chunk);}raw=Buffer.concat(chunks).toString();
       }
       const request=new Request(url,{method:req.method,headers:req.headers,...(!['GET','HEAD'].includes(req.method)?{body:raw}:{})});
-      if(isROI)return send(await roiAPI(request));
+      if(isUsers)return send(users?await users.api(request,session,{catalog:roiAPI.userCatalog,campaigns:roiAPI.userCampaigns}):authJSON({error:'Persistência indisponível.'},503));
+      if(isROI)return send(await roiAPI(request,session));
       if(isGoogle)return send(await googleAPI(request));
       if(url.pathname==='/api/activate'){
         if(req.method!=='POST'||!sameOrigin(request)||!storage||authSettings(env))return send(authJSON({error:'Ativação indisponível.'},403));

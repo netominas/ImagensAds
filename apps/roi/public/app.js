@@ -8,7 +8,8 @@ import {adsMetrics} from './ads-metrics.js';
 import {gamMetrics} from './gam-metrics.js';
 import {campaignRows,dailyReport,campaignTypeLabel} from './campaign-report.js';
 import {requireAccess,secureFetch} from '/access.js';
-if(!await requireAccess())throw Error('Sessão necessária.');
+const viewer=await requireAccess();if(!viewer)throw Error('Sessão necessária.');
+const readOnly=viewer.role==='reader';document.body.classList.toggle('readonly',readOnly);document.querySelector('.users-nav').hidden=readOnly;
 window.addEventListener('storage',e=>{if(e.key==='adstudio-logout')location.replace('/login');});
 window.addEventListener('pageshow',e=>{if(e.persisted)location.reload();});
 const $=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -31,9 +32,9 @@ const paymentsUI=paymentPanel({api});
 const utilityView=()=>['networks','payments'].includes(state.view);
 const recentUI=recentChanges({api});
 const changePanel=campaignChangePanel({api,onSaved:()=>recentUI.invalidate()});
-const budgetsUI=budgetEditor({api,onChanged:async()=>{recentUI.invalidate();if(state.view==='campaign')await changePanel.refresh();}});
+const budgetsUI=budgetEditor({api,readOnly,onChanged:async()=>{recentUI.invalidate();if(state.view==='campaign')await changePanel.refresh();}});
 const infoButton=r=>`<button type="button" class="campaign-info-button" data-recent-account="${esc(r.account)}" data-recent-campaign="${esc(r.campaign)}" data-recent-name="${esc(r.name)}" aria-label="Alterações recentes de ${esc(r.name)}" aria-haspopup="dialog" aria-expanded="false" aria-controls="recent-changes-card"><span aria-hidden="true">i</span></button>`;
-const budgetButton=r=>`<button type="button" class="campaign-budget-button" data-budget-account="${esc(r.account)}" data-budget-campaign="${esc(r.campaign)}" title="Consultar e alterar orçamento no Google Ads">✎ …</button>`;
+const budgetButton=r=>`<${readOnly?'span':'button type="button"'} class="campaign-budget-button" data-budget-account="${esc(r.account)}" data-budget-campaign="${esc(r.campaign)}" title="Orçamento da campanha">…</${readOnly?'span':'button'}>`;
 function notices(){if(state.view==='networks'){$('notice').hidden=!state.messages.length;$('notice').textContent=state.messages.join('\n');return;}const messages=[...state.messages,...(state.run?.result?.warnings||[])];if(state.run?.result?.rows?.some(r=>!Array.isArray(r.gam_original)))messages.unshift('Sincronize para carregar eCPM, CPC e PMR. Este relatório foi salvo antes da inclusão dessas métricas.');if(state.run?.result?.rows?.some(r=>!Array.isArray(r.ads_original)))messages.unshift('Sincronize para carregar Taxa de conversão e Custo por conversão do Google Ads.');if(state.archive&&scopeChanged())messages.unshift('Este é um relatório histórico. Selecione Dados atuais para consultar o banco com outros filtros.');if(!state.archive&&state.run&&scopeChanged()&&!state.loading)messages.unshift('Os filtros diferem do período exibido. Confira as datas e as fontes selecionadas.');if(state.run?.result?.partial)messages.unshift(state.archive?'Coleta incompleta neste relatório histórico. Selecione Dados atuais para consultar o banco.':'Importação em andamento ou pendente: lucro e ROI aguardam a cobertura completa. Consulte as fontes abaixo.');$('notice').hidden=!messages.length;$('notice').textContent=[...new Set(messages)].join('\n');}
 function scopeChanged(){if(!state.run)return false;const c=state.run.config;return $('start').value!==c.start||$('end').value!==c.end||JSON.stringify(selectValues('accounts').sort())!==JSON.stringify([...c.accounts].sort())||JSON.stringify(selectValues('networks').sort())!==JSON.stringify([...c.networks].sort());}
 function dates(){const preset=$('period').value;if(preset==='custom')return;const end=new Date();if(!['today','7'].includes(preset))end.setDate(end.getDate()-1);const start=new Date(end);if(preset==='month')start.setDate(1);else if(!['today','yesterday'].includes(preset))start.setDate(end.getDate()-Number(preset)+1);$('start').value=iso(start);$('end').value=iso(end);}
@@ -148,7 +149,7 @@ function showRun(run,applyScope=false){
  if(applyScope){const same=$('start').value===run.start&&$('end').value===run.end;$('start').value=run.start;$('end').value=run.end;if(!same)$('period').value='custom';for(const field of ['accounts','networks'])for(const option of $(field).options)option.selected=run.config[field].includes(option.value);}
  const url=new URL(location.href);if(state.archive)url.searchParams.set('run',run.id);else{url.searchParams.delete('run');url.searchParams.set('start',run.start);url.searchParams.set('end',run.end);}history.replaceState(null,'',url.pathname+url.search);
  const sites=[...new Set([...r.rows.map(row=>row.site),...r.pending.map(row=>row.site)].filter(Boolean))].sort();if(r.rows.some(row=>!row.site)||r.pending.some(row=>!row.site))sites.push('Sem site identificado');$('site').innerHTML='<option value="">Todos os sites</option>'+sites.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');applySiteFromURL();
- $('report-range').textContent=(state.archive?'Relatório salvo: ':'Banco de dados: ')+run.start.split('-').reverse().join('/')+' a '+run.end.split('-').reverse().join('/')+' · '+run.config.accounts.length+' contas / '+run.config.networks.length+' redes';
+ $('report-range').textContent=(state.archive?'Relatório salvo: ':'Banco de dados: ')+run.start.split('-').reverse().join('/')+' a '+run.end.split('-').reverse().join('/')+(readOnly?' · Acesso de leitura':' · '+run.config.accounts.length+' contas / '+run.config.networks.length+' redes');
  $('updated').textContent=r.updated_at?'Última atualização: '+new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short'}).format(new Date(r.updated_at)):'Aguardando primeira coleta';
  $('footer-state').textContent=state.archive?'Relatório histórico preservado':r.partial?'Importação incompleta · consulte as fontes':r.data_coverage?.stale_days?'Dados preservados · há fontes atrasadas':'Consulta ao banco local · receita estimada';
  $('sources-summary').innerHTML='<strong>Fontes e cobertura do período</strong><ul>'+r.sources.map(s=>'<li>'+esc(s.kind==='gam'?'Ad Manager':'Google Ads')+' · '+esc(s.name)+' ('+esc(s.id)+'): '+(s.stale?'coleta atrasada; dados preservados':s.ok?'dados disponíveis':esc(s.missing_days||'')+' dia(s) pendente(s)')+'</li>').join('')+'</ul>';
@@ -170,13 +171,13 @@ async function loadDatabase(ensure=true){
  const token=++state.requestToken,scope=reportScope();state.loading=true;
  try{
   const params=new URLSearchParams({start:scope.start,end:scope.end,accounts:scope.accounts.join(','),networks:scope.networks.join(',')}),run=await api('/report?'+params);if(token!==state.requestToken)return;
-  state.messages=[];showRun(run);if(ensure&&!run.result.data_coverage.complete){const pending=await api('/ensure',scope);if(pending.id&&!state.watching)void watch(pending.id);}
+  state.messages=[];showRun(run);if(!readOnly&&ensure&&!run.result.data_coverage.complete){const pending=await api('/ensure',scope);if(pending.id&&!state.watching)void watch(pending.id);}
  }catch(e){if(token===state.requestToken){state.messages=[e.message];notices();}}
  finally{if(token===state.requestToken){state.loading=false;notices();}}
 }
 function selectDatabase(){state.archive=false;$('history').value='database';const url=new URL(location.href);url.searchParams.delete('run');history.replaceState(null,'',url.pathname+url.search);}
 function queueReport(saveSources=false){
- clearTimeout(state.readTimer);state.readTimer=setTimeout(async()=>{selectDatabase();try{if(saveSources){const saved=await api('/settings',{accounts:selectValues('accounts'),networks:selectValues('networks')});state.catalog.settings=saved.settings;renderNetworks();}await loadDatabase(true);}catch(e){state.messages=[e.message];notices();}},250);
+ clearTimeout(state.readTimer);state.readTimer=setTimeout(async()=>{selectDatabase();try{if(!readOnly&&saveSources){const saved=await api('/settings',{accounts:selectValues('accounts'),networks:selectValues('networks')});state.catalog.settings=saved.settings;renderNetworks();}await loadDatabase(true);}catch(e){state.messages=[e.message];notices();}},250);
 }
 async function watch(id){
  if(state.watching)return;state.watching=id;busy(true);let failed=false;
@@ -195,7 +196,7 @@ async function init(){
  try{const [catalog,status]=await Promise.all([api('/catalog'),api('/status')]);applyCatalog(catalog);showAutomatic(status);await refreshHistory();const archived=params.get('run');if(utilityView())render();else if(archived&&archived!=='database')showRun(await api('/run?id='+archived),true);else await loadDatabase(true);if(status.running&&!state.watching)void watch(status.running.id);setInterval(()=>void pollDatabase(),60000);}
  catch(e){$('workspace-summary').textContent='Fontes indisponíveis';state.messages=[e.message];notices();}
 }
-$('sync').onclick=async()=>{if(state.busy)return;selectDatabase();try{state.messages=[];const pending=await api('/sync',reportScope());void watch(pending.id);}catch(e){state.messages=[e.message];notices();}};
+$('sync').onclick=async()=>{if(readOnly){await loadDatabase(false);return;}if(state.busy)return;selectDatabase();try{state.messages=[];const pending=await api('/sync',reportScope());void watch(pending.id);}catch(e){state.messages=[e.message];notices();}};
 $('period').onchange=()=>{dates();queueReport();};for(const id of ['start','end'])$(id).onchange=()=>{$('period').value='custom';queueReport();};for(const id of ['accounts','networks'])$(id).onchange=()=>queueReport(true);
 $('site').onchange=()=>{const url=new URL(location.href),selected=$('site').value;if(selected)url.searchParams.set('site',selected);else url.searchParams.delete('site');navigate(url.pathname+url.search);};$('match-filter').onchange=()=>render();$('day-result').onchange=()=>render();$('search').oninput=()=>renderTable();
 
@@ -204,4 +205,7 @@ document.addEventListener('click',e=>{if(matchMedia('(max-width:980px)').matches
 $('pending-search').oninput=renderLinks;
 $('link-form').onsubmit=async e=>{e.preventDefault();if(state.busy)return;try{const data=await api('/links',{network:$('link-network').value,site:$('link-site').value.trim().toLowerCase(),utm:$('link-utm').value,account:$('link-account').value,campaign:$('link-campaign').value.trim()});state.catalog.links=data.links;state.messages=['Vínculo salvo. Os dados atuais são recalculados no banco.'];if(!state.archive)await loadDatabase(false);else render();}catch(e){state.messages=[e.message];notices();}};
 $('export').onclick=()=>{const safe=v=>'"'+(/^[=+@\-\t\r\n]/.test(String(v??''))?"'":'')+String(v??'').replace(/"/g,'""')+'"',sites=state.view==='sites',headers=sites?['Site','Campanhas','Custo vinculado (BRL)','Receita AdX vinculada (BRL)','Lucro de mídia (BRL)','ROI (%)','eCPM AdX (BRL)','CPC AdX (BRL)','PMR (%)','Pendências']:['Campanha','ID campanha','Conta Google Ads','Site','UTMs','URLs finais','Custo (BRL)','Receita AdX (BRL)','Lucro de mídia (BRL)','ROI (%)','eCPM AdX (BRL)','PMR (%)','CPC GAM (BRL)','Taxa de conversão (%)','Custo por conversão (BRL)','CPC Google Ads (BRL)'];if(state.view==='campaign'){downloadDailyCSV(safe);return;}const rows=[headers,...state.exportRows.map(r=>sites?[r.site,r.campaigns,r.cost,r.revenue,r.profit,r.roi==null?'':r.roi*100,r.ecpm,r.cpc,r.pmr==null?'':r.pmr*100,r.pending]:[r.name,r.campaign,r.account,r.site,r.utms.join(' | '),(r.final_urls||[]).join(' | '),r.cost,r.revenue,r.profit,r.roi==null?'':r.roi*100,r.ecpm,r.pmr==null?'':r.pmr*100,r.cpc,r.conversion_rate==null?'':r.conversion_rate*100,r.cost_per_conversion,r.ads_cpc])],csv='\ufeff'+rows.map(r=>r.map(safe).join(';')).join('\r\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='roi-'+(sites?'sites':'campanhas')+'-'+state.run.start+'-'+state.run.end+'-BRL.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+if(readOnly)$('sync').textContent='↻ Recarregar relatório';
+$('roi-logout').onclick=async()=>{try{await apiLogout();}catch(e){state.messages=[e.message];notices();}};
+async function apiLogout(){const response=await secureFetch('/api/logout',{method:'POST'});if(!response.ok)throw Error('Não foi possível sair.');localStorage.setItem('adstudio-logout',String(Date.now()));location.replace('/login');}
 init();

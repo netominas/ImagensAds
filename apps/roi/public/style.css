@@ -53,3 +53,7 @@ body.sidebar-hidden{grid-template-columns:minmax(0,1fr)}.sidebar-toggle{display:
 .report-sticky-header{position:fixed;z-index:30;overflow:hidden;background:#eef4f9;border:1px solid #d1dce7;box-shadow:0 3px 8px #19344d1c;pointer-events:auto}.report-sticky-header table{margin:0;min-width:0;table-layout:fixed;border-collapse:collapse;transform-origin:left top}.report-sticky-header th{background:#eef4f9}
 
 .campaign-meta .campaign-type{display:inline-flex;align-items:center;padding:1px 6px;border:1px solid #d8e6f5;border-radius:4px;background:#edf4fc;color:#436b94;font-size:11px;line-height:1.6;white-space:nowrap}
+
+.readonly [data-view="payments"],.readonly [data-view="networks"],.readonly [data-view="links"],.readonly #scope,.readonly #change-editor,.readonly .change-actions button,.readonly #campaign-budget,.readonly .coverage-strip>a,.readonly .return-apps,.readonly #workspace-summary,.readonly #auto-status{display:none!important}.readonly .campaign-budget-button{cursor:default}.readonly #campaign-detail .campaign-detail-actions{min-height:0}
+
+#roi-logout{border:1px solid #d4e2ef;background:#fff;color:#37658f;border-radius:5px;padding:7px 11px;font:inherit;font-size:12px;cursor:pointer}
