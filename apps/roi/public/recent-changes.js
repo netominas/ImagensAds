@@ -1,3 +1,4 @@
+export const changesOnDate=(items,date)=>items.filter(item=>item.date===date);
 export function recentChanges({api}){
  const popup=document.getElementById('recent-changes-card'),list=document.getElementById('recent-changes-list'),message=document.getElementById('recent-changes-message'),cache=new Map();
  let trigger=null,version=0,closing,pinned=false,quietFocus=false;
@@ -6,12 +7,13 @@ export function recentChanges({api}){
  function later(){clearTimeout(closing);closing=setTimeout(()=>{if(!pinned&&!popup.contains(document.activeElement))close();},250);}
  async function show(button,{pin=false,force=false}={}){
   clearTimeout(closing);if(trigger===button&&popup.matches(':popover-open')&&!force){pinned=pinned||pin;return;}
-  close();trigger=button;pinned=pin;const token=++version,key=button.dataset.recentAccount+':'+button.dataset.recentCampaign;
+  close();trigger=button;pinned=pin;const token=++version,day=button.dataset.recentDate||'',key=button.dataset.recentAccount+':'+button.dataset.recentCampaign+(day?':all':':7');
+  document.getElementById('recent-changes-title').textContent=day?'Alterações em '+day.split('-').reverse().join('/'):'Alterações recentes';
   button.setAttribute('aria-expanded','true');document.getElementById('recent-changes-name').textContent=button.dataset.recentName;list.replaceChildren();message.textContent='Carregando alterações…';document.getElementById('recent-changes-retry').hidden=true;popup.showPopover();position();
   try{
-   let data=cache.get(key);if(force||!data||Date.now()-data.cached>30000){data={...await api('/campaign-changes?'+new URLSearchParams({account:button.dataset.recentAccount,campaign:button.dataset.recentCampaign,recent:'7'})),cached:Date.now()};cache.set(key,data);}if(token!==version)return;
-   message.textContent=data.items.length?'Registros dos últimos 7 dias.':'Sem alterações registradas nos últimos 7 dias.';
-   for(const item of data.items){const entry=document.createElement('article'),heading=document.createElement('div'),date=document.createElement('time'),type=document.createElement('strong'),description=document.createElement('p');entry.className='recent-change-entry';date.dateTime=item.date;date.textContent=item.date.split('-').reverse().join('/');type.textContent=data.types.find(t=>t.value===item.type)?.label||item.type;heading.append(date,type);description.textContent=item.description;entry.append(heading,description);if(item.source==='google_ads'){const source=document.createElement('small');source.textContent='Google Ads · pelo painel';entry.append(source);}list.append(entry);}
+   let data=cache.get(key);if(force||!data||Date.now()-data.cached>30000){data={...await api('/campaign-changes?'+new URLSearchParams({account:button.dataset.recentAccount,campaign:button.dataset.recentCampaign,...(day?{}:{recent:'7'})})),cached:Date.now()};cache.set(key,data);}if(token!==version)return;
+   const items=day?changesOnDate(data.items,day):data.items;message.textContent=day?(items.length+' '+(items.length===1?'alteração registrada':'alterações registradas')+' neste dia.'):(items.length?'Registros dos últimos 7 dias.':'Sem alterações registradas nos últimos 7 dias.');
+   for(const item of items){const entry=document.createElement('article'),heading=document.createElement('div'),date=document.createElement('time'),type=document.createElement('strong'),description=document.createElement('p');entry.className='recent-change-entry';date.dateTime=item.date;date.textContent=item.date.split('-').reverse().join('/');type.textContent=data.types.find(t=>t.value===item.type)?.label||item.type;heading.append(date,type);description.textContent=item.description;entry.append(heading,description);if(item.source==='google_ads'){const source=document.createElement('small');source.textContent='Google Ads · pelo painel';entry.append(source);}list.append(entry);}
    position();
   }catch(error){if(token!==version)return;message.textContent=error.message;document.getElementById('recent-changes-retry').hidden=false;position();}
  }
@@ -22,7 +24,7 @@ export function recentChanges({api}){
  document.addEventListener('pointerdown',event=>{if(trigger&&!popup.contains(event.target)&&!trigger.contains(event.target))close();});
  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&trigger){event.preventDefault();close(true);}});
  addEventListener('resize',position);document.addEventListener('scroll',()=>{if(trigger){if(!trigger.isConnected)close();else position();}},true);
- return {close,invalidate(){cache.clear();},bind(){if(trigger&&!trigger.isConnected)close();document.querySelectorAll('[data-recent-account]').forEach(button=>{
+ return {close,seed({account,campaign,items,types}){cache.set(account+':'+campaign+':all',{items,types,cached:Date.now()});},invalidate(){cache.clear();},bind(){if(trigger&&!trigger.isConnected)close();document.querySelectorAll('[data-recent-account]').forEach(button=>{
   button.onpointerenter=event=>{if(event.pointerType==='mouse'||event.pointerType==='pen')void show(button);};button.onpointerleave=later;
   button.onfocus=()=>{if(!quietFocus)void show(button);};button.onblur=event=>{if(!popup.contains(event.relatedTarget)&&!pinned)later();};
   button.onclick=()=>{if(trigger===button&&pinned){close();return;}void show(button,{pin:true});};

@@ -1,7 +1,7 @@
 import {stickyReportHeader} from './sticky-report.js';
 import {reportPeriod} from './report-period.js';
 import {paymentPanel} from './payments.js';
-import {recentChanges} from './recent-changes.js';
+import {recentChanges,changesOnDate} from './recent-changes.js';
 import {budgetEditor} from './budget-editor.js';
 import {campaignChangePanel} from './campaign-changes.js';
 import {adsMetrics} from './ads-metrics.js';
@@ -31,7 +31,8 @@ stickyReportHeader($('report-panel'));
 const paymentsUI=paymentPanel({api});
 const utilityView=()=>['networks','payments'].includes(state.view);
 const recentUI=recentChanges({api});
-const changePanel=campaignChangePanel({api,onSaved:()=>recentUI.invalidate()});
+let dayChanges={account:'',campaign:'',items:[]};
+const changePanel=campaignChangePanel({api,onSaved:()=>recentUI.invalidate(),onLoaded:data=>{dayChanges=data;recentUI.seed(data);if(state.view==='campaign'&&state.account===data.account&&state.campaign===data.campaign)renderDailyTable();}});
 const budgetsUI=budgetEditor({api,readOnly,onChanged:async()=>{recentUI.invalidate();if(state.view==='campaign')await changePanel.refresh();}});
 const infoButton=r=>`<button type="button" class="campaign-info-button" data-recent-account="${esc(r.account)}" data-recent-campaign="${esc(r.campaign)}" data-recent-name="${esc(r.name)}" aria-label="Alterações recentes de ${esc(r.name)}" aria-haspopup="dialog" aria-expanded="false" aria-controls="recent-changes-card"><span aria-hidden="true">i</span></button>`;
 const budgetButton=r=>`<${readOnly?'span':'button type="button"'} class="campaign-budget-button" data-budget-account="${esc(r.account)}" data-budget-campaign="${esc(r.campaign)}" title="Orçamento da campanha">…</${readOnly?'span':'button'}>`;
@@ -97,14 +98,20 @@ function renderCampaignMetrics(){
  for(const id of ['k-profit','k-roi'])$(id).className=totals.profit==null?'':totals.profit<0?'negative':'positive';
  const confirmed=days.filter(d=>d.comparable);drawChart(confirmed.length?[{cost_original:confirmed.map(d=>({date:d.date,currency:'BRL',amount:d.cost})),revenue_original:confirmed.map(d=>({date:d.date,currency:'BRL',amount:d.revenue}))}]:[]);
 }
+function dailyChangeIcon(date){
+ if(dayChanges.account!==state.account||dayChanges.campaign!==state.campaign||!changesOnDate(dayChanges.items,date).length)return '';
+ return `<button type="button" class="campaign-info-button daily-change-button" data-recent-account="${esc(state.account)}" data-recent-campaign="${esc(state.campaign)}" data-recent-date="${esc(date)}" data-recent-name="${esc($('campaign-detail-name').textContent)}" aria-label="Alterações em ${esc(date.split('-').reverse().join('/'))}" aria-haspopup="dialog" aria-expanded="false" aria-controls="recent-changes-card"><span aria-hidden="true">i</span></button>`;
+}
 function renderDailyTable(){
+ recentUI.close();
  const rows=filteredDays(),columns=[['date','Data'],['cost','Custo'],['revenue','Receita AdX'],['profit','Lucro de mídia'],['roi','ROI %'],['ecpm','eCPM'],['pmr','PMR'],['cpc','CPC GAM'],['conversion_rate','Taxa de conversão'],['cost_per_conversion','Custo / conversão'],['ads_cpc','CPC Google Ads']];
  rows.sort((a,b)=>{const x=a[state.sort],y=b[state.sort];if(x==null)return y==null?0:1;if(y==null)return -1;return(typeof x==='string'?x.localeCompare(y):x-y)*state.direction;});
  state.exportRows=rows;const panel=$('report-panel');panel.classList.remove('campaign-report','single-site-campaigns');panel.classList.add('daily-report');
  $('table-title').textContent='Resultados diários';$('table-description').textContent='Resultados por dia no período selecionado, consultados no banco local. Lucro e ROI exigem conciliação confirmada.';
  $('table-head').innerHTML='<tr>'+columns.map(([key,label])=>'<th scope="col" title="'+esc(metricTitles[key]||label)+'" aria-sort="'+(state.sort===key?(state.direction===1?'ascending':'descending'):'none')+'"><button data-sort="'+key+'">'+label+(state.sort===key?(state.direction===1?' ↑':' ↓'):'')+'</button></th>').join('')+'</tr>';
- $('table-body').innerHTML=rows.length?rows.map(d=>'<tr><td>'+esc(d.date.split('-').reverse().join('/'))+'</td><td>'+money(d.cost)+'</td><td>'+money(d.revenue)+'</td><td class="'+(d.profit==null?'':d.profit<0?'negative':'positive')+'">'+money(d.profit)+'</td><td>'+pct(d.roi)+'</td>'+campaignMetricCells(d)+'</tr>').join(''):'<tr><td colspan="11" class="empty">'+(selectedCampaignRows().length?'Nenhum dia corresponde aos filtros.':'Campanha sem dados neste período ou site. Dias ainda não importados são coletados em segundo plano.')+'</td></tr>';
+ $('table-body').innerHTML=rows.length?rows.map(d=>'<tr><td>'+esc(d.date.split('-').reverse().join('/'))+dailyChangeIcon(d.date)+'</td><td>'+money(d.cost)+'</td><td>'+money(d.revenue)+'</td><td class="'+(d.profit==null?'':d.profit<0?'negative':'positive')+'">'+money(d.profit)+'</td><td>'+pct(d.roi)+'</td>'+campaignMetricCells(d)+'</tr>').join(''):'<tr><td colspan="11" class="empty">'+(selectedCampaignRows().length?'Nenhum dia corresponde aos filtros.':'Campanha sem dados neste período ou site. Dias ainda não importados são coletados em segundo plano.')+'</td></tr>';
  const totals=dailyTotals(rows);$('table-foot').hidden=!rows.length;$('table-foot').innerHTML='<tr><td>Total filtrado</td><td>'+money(totals.cost)+'</td><td>'+money(totals.revenue)+'</td><td>'+money(totals.profit)+'</td><td>'+pct(totals.roi)+'</td>'+campaignMetricCells(totals)+'</tr>';
+ recentUI.bind();
  $('showing').textContent=rows.length+' dias';$('export').disabled=!rows.length;
  $('table-head').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{state.direction=state.sort===b.dataset.sort?-state.direction:1;state.sort=b.dataset.sort;renderDailyTable();});
 }

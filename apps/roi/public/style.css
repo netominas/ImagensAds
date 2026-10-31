@@ -57,3 +57,5 @@ body.sidebar-hidden{grid-template-columns:minmax(0,1fr)}.sidebar-toggle{display:
 .readonly [data-view="payments"],.readonly [data-view="networks"],.readonly [data-view="links"],.readonly #scope,.readonly #change-editor,.readonly .change-actions button,.readonly #campaign-budget,.readonly .coverage-strip>a,.readonly .return-apps,.readonly #workspace-summary,.readonly #auto-status{display:none!important}.readonly .campaign-budget-button{cursor:default}.readonly #campaign-detail .campaign-detail-actions{min-height:0}
 
 #roi-logout{border:1px solid #d4e2ef;background:#fff;color:#37658f;border-radius:5px;padding:7px 11px;font:inherit;font-size:12px;cursor:pointer}
+
+.daily-change-button{display:inline-flex;vertical-align:middle;margin-left:8px}.daily-report td:first-child{white-space:nowrap}
