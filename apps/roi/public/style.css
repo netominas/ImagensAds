@@ -59,3 +59,5 @@ body.sidebar-hidden{grid-template-columns:minmax(0,1fr)}.sidebar-toggle{display:
 #roi-logout{border:1px solid #d4e2ef;background:#fff;color:#37658f;border-radius:5px;padding:7px 11px;font:inherit;font-size:12px;cursor:pointer}
 
 .daily-change-button{display:inline-grid;vertical-align:middle;margin-left:8px}.daily-report td:first-child{white-space:nowrap}
+
+.sidebar-collapse{display:flex;align-items:center;gap:11px;width:100%;padding:12px;border:0;border-radius:5px;margin:0 0 6px;background:transparent;color:#dfebf8;font:inherit;font-size:14px;font-weight:550;line-height:1.5;text-align:left;cursor:pointer}.sidebar-collapse>span:first-child{width:20px;display:inline-flex;align-items:center;justify-content:center;color:#a8c9ec;flex-shrink:0}.sidebar-collapse:hover{background:#ffffff0c}.sidebar-collapse:focus-visible{outline:2px solid #72b5ff;outline-offset:2px}@media(max-width:980px){.sidebar-collapse{justify-content:center;gap:0;padding:13px 10px;margin-bottom:10px}.sidebar-collapse-label{display:none}.sidebar-collapse>span:first-child{width:24px}}
