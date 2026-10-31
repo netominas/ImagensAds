@@ -58,4 +58,4 @@ body.sidebar-hidden{grid-template-columns:minmax(0,1fr)}.sidebar-toggle{display:
 
 #roi-logout{border:1px solid #d4e2ef;background:#fff;color:#37658f;border-radius:5px;padding:7px 11px;font:inherit;font-size:12px;cursor:pointer}
 
-.daily-change-button{display:inline-flex;vertical-align:middle;margin-left:8px}.daily-report td:first-child{white-space:nowrap}
+.daily-change-button{display:inline-grid;vertical-align:middle;margin-left:8px}.daily-report td:first-child{white-space:nowrap}
