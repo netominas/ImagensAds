@@ -156,3 +156,5 @@ Validação: node --test, incluindo testes de acesso direto e APIs de outras apl
 ## Alterações por dia no relatório individual
 
 A tabela diária exibe um ícone i ao lado da data somente quando o histórico autorizado da conta + campanha contém registros naquela data. O popover existente aceita data exata e mostra todos os tipos/descrições do dia, inclusive registros automáticos de orçamento e períodos anteriores aos últimos sete dias. A lista geral de campanhas mantém a janela de sete dias. O histórico já carregado alimenta os ícones e o cache do popover; salvar ou editar um registro, ou concluir um ajuste de orçamento, atualiza a tabela. Não altera métricas, CSV, escopo ou permissões. Descrições continuam renderizadas por textContent. O mesmo botão aceita mouse, foco de teclado e toque/clique; Escape e o botão de fechar encerram o card.
+
+O preset Último mês nos relatórios ROI e Google Ads usa o mês civil anterior completo no fuso America/Sao_Paulo, incluindo virada de ano e fevereiro bissexto. No ROI, URLs com esse período preservam o nome do filtro ao recarregar. Não equivale à janela móvel de 30 dias.

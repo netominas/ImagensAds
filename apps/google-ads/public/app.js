@@ -1,3 +1,4 @@
+import {previousMonth} from '/apps/roi/report-period.js';
 import {secureFetch} from '/access.js';
 import './session.js';
 const $ = id => document.getElementById(id);
@@ -12,6 +13,7 @@ function notice(message='') { $('notice').hidden=!message; $('notice').textConte
 function iso(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function dates(){
   if($('preset').value==='custom') return;
+  if($('preset').value==='last_month'){const range=previousMonth();$('start').value=range.start;$('end').value=range.end;return;}
   const end=new Date(), start=new Date();
   if($('preset').value==='month'){start.setDate(1);}else{end.setDate(end.getDate()-1);start.setTime(end.getTime());start.setDate(start.getDate()-Number($('preset').value)+1);}
   $('start').value=iso(start);$('end').value=iso(end);
