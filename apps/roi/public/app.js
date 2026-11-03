@@ -83,7 +83,7 @@ function renderCampaignDetail(){
  const rows=selectedCampaignRows(),name=rows[0]?.name||'Campanha '+state.campaign;
  $('campaign-budget').onclick=()=>void budgetsUI.open(state.account,state.campaign);$('campaign-budget').dataset.budgetAccount=state.account;$('campaign-budget').dataset.budgetCampaign=state.campaign;$('campaign-detail-name').textContent=name;$('campaign-detail-name').title=name;const siteLabel=$('site').value||rows[0]?.site||'',urls=finalURLTargets({final_urls:rows.flatMap(row=>row.final_urls||[])});
  const siteLinks=urls.map((u,i)=>'<a class="campaign-page-link" href="'+esc(u.href)+'" target="_blank" rel="noopener noreferrer" title="'+esc(u.href)+'" aria-label="Abrir página da campanha: '+esc(u.href)+'">'+esc(siteLabel&&siteLabel!=='Sem site identificado'?siteLabel:u.hostname)+(urls.length>1?' ('+(i+1)+')':'')+'</a>').join(' · ');
- $('campaign-detail-meta-content').innerHTML='ID '+googleAdsID({account:state.account,campaign:state.campaign})+' · '+esc(rows[0]?.account_name||'Conta '+pretty(state.account))+(siteLinks?' · '+siteLinks:siteLabel?' · '+esc(siteLabel):'');
+ $('campaign-detail-meta-content').innerHTML='ID '+googleAdsID({account:state.account,campaign:state.campaign})+' · '+'<span class="campaign-type" data-type-account="'+esc(state.account)+'" data-type-campaign="'+esc(state.campaign)+'" title="Tipo de campanha no Google Ads">'+esc(campaignTypeLabel(rows.find(row=>row.campaign_type)?.campaign_type))+'</span>'+(siteLinks?' · '+siteLinks:siteLabel?' · '+esc(siteLabel):'');
  $('campaign-back').href=campaignPath($('site').value);$('campaign-back').onclick=e=>{if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button!==0)return;e.preventDefault();navigate(campaignPath($('site').value));};
  $('breadcrumb').textContent='Relatório da campanha';$('page-title').textContent=name;document.title=name+' · ROI AK Workspace';
 }
@@ -113,7 +113,7 @@ function renderDailyTable(){
  $('table-head').innerHTML='<tr>'+columns.map(([key,label])=>'<th scope="col" title="'+esc(metricTitles[key]||label)+'" aria-sort="'+(state.sort===key?(state.direction===1?'ascending':'descending'):'none')+'"><button data-sort="'+key+'">'+label+(state.sort===key?(state.direction===1?' ↑':' ↓'):'')+'</button></th>').join('')+'</tr>';
  $('table-body').innerHTML=rows.length?rows.map(d=>'<tr><td>'+esc(d.date.split('-').reverse().join('/'))+dailyChangeIcon(d.date)+'</td><td>'+money(d.cost)+'</td><td>'+money(d.revenue)+'</td><td class="'+(d.profit==null?'':d.profit<0?'negative':'positive')+'">'+money(d.profit)+'</td><td>'+pct(d.roi)+'</td>'+campaignMetricCells(d)+'</tr>').join(''):'<tr><td colspan="11" class="empty">'+(selectedCampaignRows().length?'Nenhum dia corresponde aos filtros.':'Campanha sem dados neste período ou site. Dias ainda não importados são coletados em segundo plano.')+'</td></tr>';
  const totals=dailyTotals(rows);$('table-foot').hidden=!rows.length;$('table-foot').innerHTML='<tr><td>Total filtrado</td><td>'+money(totals.cost)+'</td><td>'+money(totals.revenue)+'</td><td>'+money(totals.profit)+'</td><td>'+pct(totals.roi)+'</td>'+campaignMetricCells(totals)+'</tr>';
- recentUI.bind();
+ recentUI.bind();budgetsUI.bind();
  $('showing').textContent=rows.length+' dias';$('export').disabled=!rows.length;
  $('table-head').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{state.direction=state.sort===b.dataset.sort?-state.direction:1;state.sort=b.dataset.sort;renderDailyTable();});
 }
