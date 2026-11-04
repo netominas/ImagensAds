@@ -160,3 +160,11 @@ A tabela diária exibe um ícone i ao lado da data somente quando o histórico a
 O preset Último mês nos relatórios ROI e Google Ads usa o mês civil anterior completo no fuso America/Sao_Paulo, incluindo virada de ano e fevereiro bissexto. No ROI, URLs com esse período preservam o nome do filtro ao recarregar. Não equivale à janela móvel de 30 dias.
 
 A lupa no cabeçalho Nome da campanha abre a barra de pesquisa acima da tabela no ROI geral e por site. O campo filtra os dados já autorizados/carregados, preservando período e site; a ordenação do nome segue independente. Limpar restaura as linhas e mantém o campo aberto. Fechar ou Escape limpa o termo e devolve o foco à lupa. O cabeçalho fixo encaminha a ação à mesma pesquisa. O rodapé e o CSV usam as linhas filtradas.
+
+## Análise diária de campanhas por IA
+
+O bloco da campanha específica salva uma análise de ontem por conta + campanha + dia nas tabelas próprias roi_campaign_analyses e roi_analysis_settings. Usa o provedor/modelo de texto configurado no criador Google Ads e o cofre de chaves compartilhado. Envia apenas métricas da campanha inteira (todos os sites), oito dias de dados conciliados e até 100 registros do histórico do painel, sem credencial Google nem dados de outras campanhas. O relatório é independente dos filtros visuais e preserva a entrada/modelo/data para auditoria. Texto é renderizado por textContent. Nenhuma mutação Google Ads é feita.
+
+A geração diária é opt-in por campanha pelo administrador, inicia a partir das 8h de Brasília e aguarda dados completos e coletados no dia atual para ontem. Executa uma análise de cada vez; concluídas não são cobradas novamente no mesmo dia. Falhas/interrupções não são repetidas automaticamente; o administrador pode tentar novamente explicitamente. Sem chave ou fontes completas, aguarda configuração/coleta. O serviço não faz retroativo automático. Dados podem ser revisados posteriormente pelas fontes, sem reescrever a análise salva. Leitores veem apenas análises prontas ou o estado das campanhas autorizadas e não geram nem alteram a automação.
+
+Antes de reiniciar, confira também roi_campaign_analyses.status='running' e aguarde a conclusão. Uma interrupção é registrada como erro, preservando histórico e sem novo envio automático. Testes usam provedor simulado, sem créditos reais.

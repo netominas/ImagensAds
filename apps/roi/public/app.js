@@ -1,3 +1,4 @@
+import {campaignAnalysisPanel} from './campaign-analysis.js';
 import {stickyReportHeader} from './sticky-report.js';
 import {reportPeriod,previousMonth} from './report-period.js';
 import {paymentPanel} from './payments.js';
@@ -30,6 +31,7 @@ const selectValues=id=>[...$(id).selectedOptions].map(o=>o.value),iso=d=>[d.getF
 async function api(path,body,method='POST'){const r=await secureFetch('/apps/roi/api'+path,body?{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const data=await r.json();if(!r.ok)throw Error(data.error||'Falha na consulta.');return data;}
 stickyReportHeader($('report-panel'));
 const paymentsUI=paymentPanel({api});
+const analysisPanel=campaignAnalysisPanel({api,readOnly});
 const utilityView=()=>['networks','payments'].includes(state.view);
 const recentUI=recentChanges({api});
 let dayChanges={account:'',campaign:'',items:[]};
@@ -78,7 +80,7 @@ function detailPath(row){const params=new URLSearchParams({account:row.account,c
 function selectedCampaignRows(){return campaignRows(state.run?.result,{account:state.account,campaign:state.campaign,site:$('site').value});}
 function bindCampaignLinks(){document.querySelectorAll('[data-campaign-report]').forEach(a=>a.onclick=e=>{if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button!==0)return;e.preventDefault();$('search').value='';$('match-filter').value='all';$('day-result').value='all';navigate(a.getAttribute('href'));window.scrollTo({top:0,behavior:'auto'});});}
 function renderCampaignDetail(){
- const detail=state.view==='campaign';$('site').closest('.site-control').hidden=detail;document.querySelector('.controls').classList.toggle('campaign-controls',detail);changePanel.show(detail?{account:state.account,campaign:state.campaign}:null);document.querySelector('.metrics').setAttribute('aria-label',detail?'Resultados da campanha no filtro selecionado':'Resultados dos vínculos confirmados');for(const [id,label]of [['k-cost',detail?'Custo':'Custo vinculado'],['k-revenue',detail?'Receita AdX':'Receita vinculada']])$(id).previousElementSibling.firstChild.textContent=label+' ';$('campaign-detail').hidden=!detail;$('day-result').hidden=!detail;$('search').hidden=detail;document.querySelector('.coverage-strip').hidden=detail||utilityView();const connections=utilityView();if(connections)$('campaign-nav').open=false;$('networks-panel').hidden=state.view!=='networks';$('payments-panel').hidden=state.view!=='payments';for(const selector of ['.controls','.report-meta','.metrics','.chart-card','.methodology','#scope'])document.querySelector(selector).hidden=connections;
+ const detail=state.view==='campaign';$('site').closest('.site-control').hidden=detail;document.querySelector('.controls').classList.toggle('campaign-controls',detail);changePanel.show(detail?{account:state.account,campaign:state.campaign}:null);analysisPanel.show(detail?{account:state.account,campaign:state.campaign}:null);document.querySelector('.metrics').setAttribute('aria-label',detail?'Resultados da campanha no filtro selecionado':'Resultados dos vínculos confirmados');for(const [id,label]of [['k-cost',detail?'Custo':'Custo vinculado'],['k-revenue',detail?'Receita AdX':'Receita vinculada']])$(id).previousElementSibling.firstChild.textContent=label+' ';$('campaign-detail').hidden=!detail;$('day-result').hidden=!detail;$('search').hidden=detail;document.querySelector('.coverage-strip').hidden=detail||utilityView();const connections=utilityView();if(connections)$('campaign-nav').open=false;$('networks-panel').hidden=state.view!=='networks';$('payments-panel').hidden=state.view!=='payments';for(const selector of ['.controls','.report-meta','.metrics','.chart-card','.methodology','#scope'])document.querySelector(selector).hidden=connections;
  if(!detail)return;
  const rows=selectedCampaignRows(),name=rows[0]?.name||'Campanha '+state.campaign;
  $('campaign-budget').onclick=()=>void budgetsUI.open(state.account,state.campaign);$('campaign-budget').dataset.budgetAccount=state.account;$('campaign-budget').dataset.budgetCampaign=state.campaign;$('campaign-detail-name').textContent=name;$('campaign-detail-name').title=name;const siteLabel=$('site').value||rows[0]?.site||'',urls=finalURLTargets({final_urls:rows.flatMap(row=>row.final_urls||[])});
@@ -207,6 +209,7 @@ async function watch(id){
 async function refreshHistory(){const data=await api('/history');$('history').innerHTML='<option value="database">Dados atuais (banco de dados)</option>'+data.runs.filter(r=>r.status==='done').map(r=>'<option value="'+r.id+'">'+r.start.split('-').reverse().join('/')+' a '+r.end.split('-').reverse().join('/')+' · '+esc(new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short'}).format(new Date(r.created)))+'</option>').join('');$('history').value=state.archive&&state.run?state.run.id:'database';}
 $('history').onchange=async()=>{try{if($('history').value==='database'){selectDatabase();await loadDatabase(true);}else{++state.requestToken;showRun(await api('/run?id='+$('history').value),true);}}catch(e){state.messages=[e.message];notices();}};
 async function pollDatabase(){
+ void analysisPanel.refresh();
  try{const status=await api('/status');showAutomatic(status);if(state.view==='payments')return;if(state.view==='networks'){const selected={accounts:selectValues('accounts'),networks:selectValues('networks')};applyCatalog(await api('/catalog'),selected);renderNetworks();return;}if(status.running&&!state.watching)void watch(status.running.id);else if(!state.archive&&!state.watching&&(status.revision!==state.run?.result?.revision||!state.run?.result?.data_coverage?.complete))await loadDatabase(true);}catch{/* Keep the displayed report if the server is temporarily unavailable. */}
 }
 async function init(){
