@@ -1,5 +1,11 @@
 # Instalação na VPS
 
+## Finanças da casa
+
+`/apps/financas/` compartilha a sessão administrativa e o SQLite existente. A tabela `finance_expenses` é criada de forma aditiva ao iniciar o servidor e entra no backup SQLite habitual. Não é necessário alterar `runtime.env`, `STORAGE_SECRET`, Supervisor, porta ou proxy. O aplicativo não acessa serviços bancários nem altera as tabelas de criativos, usuários, Google Ads ou ROI. Leitores de ROI não têm acesso às despesas pessoais.
+
+Após backup e atualização, valide login, cartão Finanças, retorno por Todas as aplicações, lançamento/edição/exclusão de uma despesa de teste e persistência ao recarregar. Confira também o estúdio. Sem sessão, a página deve redirecionar a `/login` e `/apps/financas/api/expenses?month=2026-11` deve responder 401. `/apps/financas/private/index.html` e arquivos de configuração não devem ser servidos. A suíte `node --test` usa bancos temporários e não precisa de credenciais reais.
+
 O processo Node deve rodar como usuário da aplicação, escutando somente em 127.0.0.1. O OpenLiteSpeed encaminha o domínio por HTTPS. Nunca exponha o repositório inteiro como arquivos estáticos: o servidor Node mantém uma lista explícita de arquivos públicos.
 
 Use Node 24 LTS e `npm ci`. Execute `node server.mjs` com o diretório de trabalho na raiz do projeto. Supervisor mantém o processo em execução.

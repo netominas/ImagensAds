@@ -1,5 +1,9 @@
 # AK Workspace
 
+## Finanças da casa
+
+`/apps/financas/` oferece um dashboard de despesas pessoais domésticas: cadastro, edição e exclusão, categorias, situação pago/pendente e análise mensal em reais. O mês considera a data da despesa; não há integração bancária. O acesso usa a sessão administrativa existente e bloqueia leitores de ROI. A tabela própria `finance_expenses` usa valores inteiros em centavos e revisão para evitar sobrescritas entre abas, no mesmo SQLite e backup da plataforma. Apenas `app.js` e `style.css` são públicos; HTML e APIs exigem autenticação. As alterações exigem origem válida.
+
 Painel de aplicações com autenticação compartilhada. Na VPS, `/` abre o dashboard após o login, `/apps/criativos/` abre o estúdio de imagens e copys e `/apps/google-ads/` abre a análise de campanhas. A criação assistida fica em `/apps/google-ads/criar`. O dashboard de ROI fica em `/apps/roi/`, com os menus Por campanha, Por sites e Conciliação. O endereço antigo `/studio` redireciona para o estúdio.
 
 Os arquivos do estúdio ficam em `apps/criativos/public/` e `apps/criativos/private/`. O servidor entrega apenas os arquivos públicos autorizados; o HTML privado requer sessão. As APIs do estúdio usam `/apps/criativos/api/`, com os endereços antigos preservados por compatibilidade. Autenticação, persistência e configuração do processo continuam compartilhadas. A pasta persistente e a chave de criptografia permanecem fora do código, preservando as chaves de API e o histórico durante atualizações.

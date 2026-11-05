@@ -1,6 +1,7 @@
 node_modules/
 .netlify/
 .env
+runtime.env
 .env.*
 !.env.example
 dist/
