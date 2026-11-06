@@ -2,6 +2,8 @@
 
 ## Finanças da casa
 
+Na aba **Categorias e grupos**, o administrador pode criar nomes para usar nas despesas fixas e nos lançamentos mensais. Os catálogos ficam nas tabelas próprias `finance_categories` e `finance_groups`, com nomes normalizados para impedir duplicidade por caixa ou espaços, limite de 60 caracteres por nome e 100 itens por catálogo. Grupos mantêm IDs estáveis; os originais `home` e `work` são preservados. A migração libera grupos personalizados na tabela de despesas fixas sem alterar seus registros e adiciona o grupo Pessoal e casa aos lançamentos antigos. Totais exibem todos os grupos cadastrados.
+
 A visão inicial **Despesas fixas mensais** mantém um planejamento recorrente separado dos lançamentos realizados, na tabela própria `finance_fixed_expenses`. Ela dispensa datas e situação de pagamento e mostra totais de Pessoal e casa, Trabalho e distribuição por categoria. Não gera lançamentos nem pagamentos automaticamente. Criar, editar e excluir seguem a mesma autenticação administrativa, validação de origem, centavos inteiros e controle de revisão. Os dados pessoais importados ficam apenas no banco, fora do Git.
 
 `/apps/financas/` oferece um dashboard de despesas pessoais domésticas: cadastro, edição e exclusão, categorias, situação pago/pendente e análise mensal em reais. O mês considera a data da despesa; não há integração bancária. O acesso usa a sessão administrativa existente e bloqueia leitores de ROI. A tabela própria `finance_expenses` usa valores inteiros em centavos e revisão para evitar sobrescritas entre abas, no mesmo SQLite e backup da plataforma. Apenas `app.js` e `style.css` são públicos; HTML e APIs exigem autenticação. As alterações exigem origem válida.
