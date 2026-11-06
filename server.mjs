@@ -159,7 +159,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       }
       if(originalPath.startsWith('/apps/financas/')){
         const asset=originalPath.slice('/apps/financas/'.length);
-        if(!new Set(['app.js','style.css']).has(asset))return send(authJSON({error:'Não encontrado.'},404));
+        if(!new Set(['app.js','fixed.js','style.css']).has(asset))return send(authJSON({error:'Não encontrado.'},404));
         return send(new Response(await readFile(new URL('./apps/financas/public/'+asset,import.meta.url)),{headers:{'Content-Type':asset.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8','Cache-Control':'no-store'}}));
       }
       if(originalPath.startsWith('/apps/roi/')){

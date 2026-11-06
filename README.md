@@ -2,6 +2,8 @@
 
 ## Finanças da casa
 
+A visão inicial **Despesas fixas mensais** mantém um planejamento recorrente separado dos lançamentos realizados, na tabela própria `finance_fixed_expenses`. Ela dispensa datas e situação de pagamento e mostra totais de Pessoal e casa, Trabalho e distribuição por categoria. Não gera lançamentos nem pagamentos automaticamente. Criar, editar e excluir seguem a mesma autenticação administrativa, validação de origem, centavos inteiros e controle de revisão. Os dados pessoais importados ficam apenas no banco, fora do Git.
+
 `/apps/financas/` oferece um dashboard de despesas pessoais domésticas: cadastro, edição e exclusão, categorias, situação pago/pendente e análise mensal em reais. O mês considera a data da despesa; não há integração bancária. O acesso usa a sessão administrativa existente e bloqueia leitores de ROI. A tabela própria `finance_expenses` usa valores inteiros em centavos e revisão para evitar sobrescritas entre abas, no mesmo SQLite e backup da plataforma. Apenas `app.js` e `style.css` são públicos; HTML e APIs exigem autenticação. As alterações exigem origem válida.
 
 Painel de aplicações com autenticação compartilhada. Na VPS, `/` abre o dashboard após o login, `/apps/criativos/` abre o estúdio de imagens e copys e `/apps/google-ads/` abre a análise de campanhas. A criação assistida fica em `/apps/google-ads/criar`. O dashboard de ROI fica em `/apps/roi/`, com os menus Por campanha, Por sites e Conciliação. O endereço antigo `/studio` redireciona para o estúdio.

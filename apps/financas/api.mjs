@@ -1,10 +1,12 @@
 import {randomUUID} from 'node:crypto';
 import {authJSON,sameOrigin} from '../../lib/auth.mjs';
+import {createFixedAPI} from './fixed.mjs';
 
 export const categories=['Moradia','Alimentação','Contas da casa','Transporte','Saúde','Educação','Lazer','Outros'];
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 export function createFinanceAPI(storage){
  const db=storage.db;
+ const fixedAPI=createFixedAPI(db,categories);
  db.exec(`CREATE TABLE IF NOT EXISTS finance_expenses (
  id TEXT PRIMARY KEY, description TEXT NOT NULL, amount_cents INTEGER NOT NULL CHECK(amount_cents>0),
  category TEXT NOT NULL, date TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('paid','pending')),
@@ -22,6 +24,7 @@ export function createFinanceAPI(storage){
  }
  return async request=>{
   const url=new URL(request.url),path=url.pathname,method=request.method;
+  if(path==='/apps/financas/api/fixed'||path.startsWith('/apps/financas/api/fixed/'))return fixedAPI(request);
   if(!['GET','HEAD'].includes(method)&&!sameOrigin(request))return authJSON({error:'Origem não permitida.'},403);
   try{
    if(path==='/apps/financas/api/expenses'){

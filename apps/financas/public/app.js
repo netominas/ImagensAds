@@ -1,4 +1,5 @@
 import {requireAccess,secureFetch} from '/access.js';
+import {initFixed} from './fixed.js';
 const $=id=>document.getElementById(id),form=$('expense-form'),month=$('month');
 const money=cents=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(cents/100);
 const localDate=()=>{const now=new Date();return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;};
@@ -54,4 +55,4 @@ $('logout').onclick=async()=>{try{const response=await secureFetch('/api/logout'
 window.addEventListener('storage',event=>{if(event.key==='adstudio-logout')location.replace('/login');});
 window.addEventListener('pageshow',event=>{if(event.persisted)location.reload();});
 window.addEventListener('focus',()=>{void requireAccess();});
-if(await requireAccess())await load();
+if(await requireAccess()){await initFixed();await load();}

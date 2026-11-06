@@ -2,6 +2,7 @@ node_modules/
 .netlify/
 .env
 runtime.env
+.codex-attachments/
 .env.*
 !.env.example
 dist/
