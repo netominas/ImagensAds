@@ -1,7 +1,7 @@
 import {shiftDay,daysBetween} from './warehouse.mjs';
 import {dateRange} from './admanager.mjs';
 import {today} from './fx.mjs';
-import {site as domain} from './model.mjs';
+import {site as domain,finalURLs} from './model.mjs';
 import {AdsError} from '../google-ads/client.mjs';
 
 export function gridPeriod(site,end=today()){
@@ -12,7 +12,7 @@ export function roiGrid({site,start,end,days,allowed=()=>true}){
  const dates=daysBetween(start,end),campaigns=new Map();let missing=false,stale=false;
  for(const day of days){const complete=day.result.data_coverage.complete,failure=day.result.data_coverage.stale_days>0;missing=missing||!complete;stale=stale||failure;
   for(const row of day.result.rows){if(!allowed(row)||(site==='Sem site identificado'?!!row.site:row.site!==site))continue;
-   const key=row.account+':'+row.campaign;if(!campaigns.has(key))campaigns.set(key,{account:row.account,campaign:row.campaign,name:row.name,type:row.campaign_type||null,cost_total:0,byDate:new Map()});const campaign=campaigns.get(key);campaign.name=row.name;campaign.type=row.campaign_type||campaign.type;campaign.cost_total+=row.cost||0;
+   const key=row.account+':'+row.campaign;if(!campaigns.has(key))campaigns.set(key,{account:row.account,campaign:row.campaign,name:row.name,type:row.campaign_type||null,final_urls:[],cost_total:0,byDate:new Map()});const campaign=campaigns.get(key);campaign.name=row.name;campaign.type=row.campaign_type||campaign.type;campaign.cost_total+=row.cost||0;for(const url of finalURLs(row.final_urls))if(!campaign.final_urls.includes(url))campaign.final_urls.push(url);
    const status=!complete?'missing':failure?'stale':row.missing_fx?'fx':row.timezone_mismatch?'timezone':row.ambiguous?'ambiguous':!row.comparable?'unlinked':row.cost===0?'zero_cost':'ok';
    campaign.byDate.set(day.date,{date:day.date,cost:row.cost,revenue:row.revenue,profit:status==='ok'||status==='zero_cost'?row.profit:null,roi:status==='ok'&&Number.isFinite(row.roi)?row.roi:null,status});
   }
