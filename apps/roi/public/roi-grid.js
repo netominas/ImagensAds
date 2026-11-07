@@ -1,0 +1,27 @@
+export function roiGridPanel({api,readOnly=false}){
+ const $=id=>document.getElementById(id),dialog=$('roi-grid-dialog'),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const money=v=>v==null?'—':new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v),pct=v=>v==null?'—':new Intl.NumberFormat('pt-BR',{style:'percent',maximumFractionDigits:1}).format(v),date=v=>v.split('-').reverse().join('/');
+ const reason={missing:'Dia ainda não importado',stale:'Falha na última coleta',fx:'Câmbio indisponível',timezone:'Fusos incompatíveis',ambiguous:'Receita com vínculo ambíguo',unlinked:'Sem receita vinculada de forma única',zero_cost:'Custo zero; ROI indefinido',no_activity:'Sem atividade registrada',ok:'Vínculo confirmado'};
+ let context=null,data=null,version=0,timer=null,busy=false,attempts=0,sort='cost_total',direction=-1,visible=[];
+ function render(){
+  const q=$('roi-grid-search').value.trim().toLocaleLowerCase('pt-BR');visible=(data?.rows||[]).filter(r=>!q||[r.name,r.campaign].join(' ').toLocaleLowerCase('pt-BR').includes(q));
+  visible.sort((a,b)=>{const x=sort==='name'?a.name:sort==='cost_total'?a.cost_total:a.cells.find(c=>c.date===sort)?.roi,y=sort==='name'?b.name:sort==='cost_total'?b.cost_total:b.cells.find(c=>c.date===sort)?.roi;if(x==null)return y==null?0:1;if(y==null)return -1;return (typeof x==='string'?x.localeCompare(y,'pt-BR'):x-y)*direction;});
+  $('roi-grid-subtitle').textContent=data?data.site+' · '+date(data.start)+' a '+date(data.end)+' · 10 dias, incluindo a data final':context?.site||'';
+  $('roi-grid-head').innerHTML='<tr><th scope="col"><button type="button" data-grid-sort="name">Nome da campanha'+(sort==='name'?(direction===1?' ↑':' ↓'):'')+'</button></th>'+(data?.dates||[]).map(d=>'<th scope="col" title="'+date(d)+'"><button type="button" data-grid-sort="'+d+'">'+d.slice(8,10)+'/'+d.slice(5,7)+(sort===d?(direction===1?' ↑':' ↓'):'')+(d===data.today?'<small>Hoje</small>':'')+'</button></th>').join('')+'</tr>';
+  $('roi-grid-head').querySelectorAll('[data-grid-sort]').forEach(b=>b.onclick=()=>{direction=sort===b.dataset.gridSort?-direction:-1;sort=b.dataset.gridSort;render();});
+  const link=(r,d)=>'/apps/roi/?'+new URLSearchParams({account:r.account,campaign:r.campaign,site:context.site,...(d?{start:d,end:d}:{start:data.start,end:data.end})});
+  $('roi-grid-body').innerHTML=visible.length?visible.map(r=>'<tr><th scope="row"><a href="'+esc(link(r))+'" title="'+esc(r.name)+'">'+esc(r.name)+'</a><small>'+esc(r.campaign)+'</small></th>'+r.cells.map(c=>{const info=date(c.date)+' · '+reason[c.status]+' · Custo '+money(c.cost)+' · Receita '+money(c.revenue)+' · Lucro '+money(c.profit)+' · ROI '+pct(c.roi),style=c.roi==null?'pending':c.roi>0?'gain':c.roi<0?'loss':'zero';return '<td><a class="roi-grid-cell '+style+'" href="'+esc(link(r,c.date))+'" title="'+esc(info)+'" aria-label="'+esc(r.name+' · '+info)+'">'+pct(c.roi)+'</a></td>';}).join('')+'</tr>').join(''):'<tr><td colspan="11" class="empty">'+(data?'Nenhuma campanha para este site ou pesquisa nos dez dias selecionados.':'Carregando ROI diário…')+'</td></tr>';
+  $('roi-grid-count').textContent=visible.length+(visible.length===1?' campanha':' campanhas');$('roi-grid-export').disabled=!visible.length;
+ }
+ function message(text){$('roi-grid-message').textContent=text;}
+ function schedule(){clearTimeout(timer);timer=setTimeout(()=>void load(true),4000);}
+ async function load(ensure=false){if(!context||busy)return;const current=version,scope={...context};busy=true;$('roi-grid-refresh').disabled=true;
+  try{const response=await api('/roi-grid?'+new URLSearchParams(scope));if(current!==version)return;data=response;render();message(response.warnings.join(' '));
+   if(response.importing&&response.missing){message('Importação em andamento. Os dias completos já podem ser consultados.');schedule();}
+   else if(ensure&&!readOnly&&response.missing&&attempts<2){attempts++;const result=await api('/roi-grid/ensure',scope);if(current!==version)return;if(result.id){message('Importando os dias pendentes em segundo plano…');schedule();}}
+  }catch(e){if(current===version)message(e.message);}finally{if(current===version){busy=false;$('roi-grid-refresh').disabled=false;}}
+ }
+ $('roi-grid-close').onclick=()=>dialog.close();dialog.addEventListener('close',()=>{context=null;version++;clearTimeout(timer);busy=false;});$('roi-grid-search').oninput=render;$('roi-grid-refresh').onclick=()=>{attempts=0;void load(true);};
+ $('roi-grid-export').onclick=()=>{if(!data||!visible.length)return;const safe=v=>'"'+String(v??'').replace(/^[=+@-]/,"'$&").replaceAll('"','""')+'"',rows=[['Campanha','ID',...data.dates.map(d=>date(d)+' ROI (%)')],...visible.map(r=>[r.name,r.campaign,...r.cells.map(c=>c.roi==null?'':c.roi*100)])],url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(safe).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='roi-diario-'+context.site+'-'+data.end+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+ return {open(scope){context=scope;data=null;version++;attempts=0;busy=false;clearTimeout(timer);sort='cost_total';direction=-1;$('roi-grid-search').value='';message('');render();if(!dialog.open)dialog.showModal();void load(true);}};
+}
