@@ -49,3 +49,9 @@ test('readers get only authorized campaign placements and cannot launch collecti
   assert.equal((await api(req('?'+new URLSearchParams({...scope,campaign:'12'})),reader)).status,403);assert.equal((await api(req('/refresh',scope),reader)).status,403);assert.equal((await api(req('/ensure',scope,'https://evil.test'))).status,403);assert.equal((await api(req('?'+new URLSearchParams({...scope,account:'bad'})))).status,400);
  }finally{api.stopAuto();f.service.stop();f.db.close();}
 });
+
+test('shared GAM cache is not exposed without Ads ownership and duplicate campaign IDs hide ambiguous reader revenue',async()=>{
+ const f=fixture();try{await f.service.launch(scope);await done(f);assert.equal((await f.service.read({...scope,campaign:'12'},{reader:true})).rows.length,0);
+ f.warehouse.saveSource('ads','1111111111',day,day,[{account:'1111111111',campaign,date:day,cost:1}]);const r=await f.service.read(scope,{reader:true});assert.ok(r.rows.every(row=>row.revenue===null&&row.profit===null));assert.ok(r.warnings.some(w=>w.includes('mais de uma conta')));
+ }finally{f.service.stop();f.db.close();}
+});
