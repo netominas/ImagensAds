@@ -1,3 +1,4 @@
+import {applyDeductions,createDeductionSettings} from './deductions.mjs';
 import {gridPeriod,roiGrid} from './roi-grid.mjs';
 import {createPlacements} from './placements.mjs';
 import {createCampaignAnalysis} from './campaign-analysis.mjs';
@@ -24,6 +25,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
  CREATE TABLE IF NOT EXISTS roi_links (id TEXT PRIMARY KEY,network TEXT NOT NULL,site TEXT NOT NULL,utm TEXT NOT NULL,account TEXT NOT NULL,campaign TEXT NOT NULL,UNIQUE(network,site,utm));
  CREATE TABLE IF NOT EXISTS roi_settings (id INTEGER PRIMARY KEY CHECK(id=1),data TEXT NOT NULL);`);
  db.prepare("UPDATE roi_runs SET status='error',error='Sincronização interrompida pelo reinício. Os dados e relatórios anteriores foram preservados.' WHERE status='running'").run();
+ const deductions=createDeductionSettings(db);
  const warehouse=createROIWarehouse(db),googleAdsLink=createGoogleAdsLinks(db,google),campaignChanges=createCampaignChanges(db);
  const budgets=createBudgets(db,google,{accountFor:async account=>{if(typeof account!=='string'||!/^\d{10}$/.test(account))throw new AdsError('Conta inválida.',{status:400});const a=(await catalog()).accounts.find(a=>a.id===account);if(!a)throw new AdsError('Conta indisponível para este painel.',{status:403});return a;}});
  const links=()=>db.prepare('SELECT * FROM roi_links ORDER BY site,utm').all();
@@ -53,8 +55,8 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   for(const [field,available]of [['accounts',data.accounts],['networks',data.networks]])if(!Array.isArray(body[field])||!body[field].length||body[field].length>120||new Set(body[field]).size!==body[field].length||body[field].some(v=>!available.some(a=>a.id===v)))throw new AdsError('Selecione contas e redes disponíveis.',{status:400});
   return {...(dates?{start:body.start,end:body.end}:{}),accounts:body.accounts,networks:body.networks};
  }
- function getRun(rid){if(!/^[a-f0-9]{32}$/.test(rid||''))throw new AdsError('Sincronização inválida.',{status:400});const r=db.prepare('SELECT * FROM roi_runs WHERE id=?').get(rid);if(!r)throw new AdsError('Relatório não encontrado.',{status:404});return {...r,config:JSON.parse(r.config),result:r.result?JSON.parse(r.result):null};}
- function databaseReport(scope){const result=warehouse.read(scope,links(),warehouse.meta('catalog')||{});result.warnings.push(...(warehouse.meta('collection_warnings')||[]));return {id:'database',database:true,status:'done',start:scope.start,end:scope.end,config:{...scope,links:links()},result};}
+ function getRun(rid){if(!/^[a-f0-9]{32}$/.test(rid||''))throw new AdsError('Sincronização inválida.',{status:400});const r=db.prepare('SELECT * FROM roi_runs WHERE id=?').get(rid);if(!r)throw new AdsError('Relatório não encontrado.',{status:404});return {...r,config:JSON.parse(r.config),result:r.result?applyDeductions(JSON.parse(r.result),deductions.read()):null};}
+ function databaseReport(scope){const result=applyDeductions(warehouse.read(scope,links(),warehouse.meta('catalog')||{}),deductions.read());result.warnings.push(...(warehouse.meta('collection_warnings')||[]));return {id:'database',database:true,status:'done',start:scope.start,end:scope.end,config:{...scope,links:links()},result};}
  function runningJob(){return db.prepare("SELECT id,progress FROM roi_runs WHERE status='running' ORDER BY created DESC LIMIT 1").get()||null;}
  function launch(scope,{mode='manual',plan=null}={}){
   if(active)throw new AdsError('Há uma atualização em andamento.',{status:409});active=true;
@@ -78,11 +80,11 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   const manual=getRun(run).config.mode==='manual',stored=manual?result:{database:true,data_coverage:result.data_coverage,warnings:result.warnings,updated_at:result.updated_at,sources:result.sources};warehouse.putMeta('collection_warnings',[catalogError,fxError].filter(Boolean));
   db.prepare("UPDATE roi_runs SET status='done',result=?,progress='Concluído',finished=? WHERE id=?").run(JSON.stringify(stored),new Date().toISOString(),run);warehouse.putMeta('last_collection',{at:new Date().toISOString(),run,complete:result.data_coverage.complete,stale:result.data_coverage.stale_days>0});return {complete:result.data_coverage.complete&&!result.data_coverage.stale_days&&!fxError&&!catalogError};
  }
- const placements=createPlacements(db,{google,admanager,catalog,settings:()=>defaults(warehouse.meta('catalog')||{accounts:[],networks:[]}),warehouse,loadRates:rates,autoSync,isBusy:()=>active,baseline:({account,campaign,start,end})=>{const result=databaseReport({start,end,...defaults(warehouse.meta('catalog')||{accounts:[],networks:[]})}).result,rows=result.rows.filter(r=>r.account===account&&r.campaign===campaign);return {revenue:result.data_coverage.complete&&!result.data_coverage.stale_days&&rows.length&&rows.every(r=>r.revenue!=null&&!r.ambiguous)?rows.reduce((s,r)=>s+r.revenue,0):null};}});
+ const placements=createPlacements(db,{google,admanager,catalog,settings:()=>defaults(warehouse.meta('catalog')||{accounts:[],networks:[]}),warehouse,loadRates:rates,autoSync,isBusy:()=>active,baseline:({account,campaign,start,end})=>{const result=databaseReport({start,end,...defaults(warehouse.meta('catalog')||{accounts:[],networks:[]})}).result,rows=result.rows.filter(r=>r.account===account&&r.campaign===campaign);return {revenue:result.data_coverage.complete&&!result.data_coverage.stale_days&&rows.length&&rows.every(r=>r.revenue!=null&&!r.ambiguous)?rows.reduce((s,r)=>s+(r.gross_revenue??r.revenue),0):null,deductions:deductions.read(),deduction_days:rows.flatMap(r=>r.deduction_days||[])};}});
  const analysis=createCampaignAnalysis(storage,{catalog,scope:()=>defaults(warehouse.meta('catalog')||{accounts:[],networks:[]}),report:scope=>databaseReport(scope).result,changes:campaignChanges.list,isBusy:()=>active,...(generateAnalysis?{generate:generateAnalysis}:{})});
  const scheduler=createROIScheduler({enabled:autoSync,read:()=>warehouse.meta('auto_sync'),write:value=>warehouse.putMeta('auto_sync',value),isBusy:()=>active,day:today,run:async range=>{const data=await catalog(),selected=defaults(data);if(!selected.accounts.length||!selected.networks.length)throw Error('Configure as fontes');if(!config())db.prepare('INSERT OR REPLACE INTO roi_settings VALUES (1,?)').run(JSON.stringify(selected));const job=launch({start:range.start,end:range.end,...selected},{mode:range.deep?'automatic-deep':'automatic'});return await job.promise;}});
  async function gridScope(body){const range=gridPeriod(body.site,body.end||today()),data=await catalog();return {...range,scope:scopeFrom({...range,...defaults(data)},data)};}
- async function gridData(body,user){const {scope,...range}=await gridScope(body),days=[];for(let date=range.start;date<=range.end;date=shiftDay(date,1))days.push({date,result:databaseReport({...scope,start:date,end:date}).result});return {...roiGrid({...range,days,...(user?.role==='reader'?{allowed:r=>canCampaign(user,r.account,r.campaign)}:{})}),importing:user?.role==='reader'?false:Boolean(runningJob()),can_import:user?.role!=='reader'};}
+ async function gridData(body,user){const {scope,...range}=await gridScope(body),days=[];for(let date=range.start;date<=range.end;date=shiftDay(date,1))days.push({date,result:databaseReport({...scope,start:date,end:date}).result});return {deductions:days[0]?.result.deductions,...roiGrid({...range,days,...(user?.role==='reader'?{allowed:r=>canCampaign(user,r.account,r.campaign)}:{})}),importing:user?.role==='reader'?false:Boolean(runningJob()),can_import:user?.role!=='reader'};}
  async function readOnly(request,user){
   const url=new URL(request.url),path=url.pathname.slice('/apps/roi/api'.length);
   const denied=()=>authJSON({error:'Você não tem permissão para esta operação.'},403);
@@ -103,7 +105,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
    const accounts=(url.searchParams.get('accounts')||'').split(',').filter(Boolean);if(!accounts.length)return authJSON({items:[],warnings:[]});if(accounts.some(a=>!canAccount(user,a)))return denied();
    const result=await budgets.listing(accounts);return authJSON({items:result.items.filter(r=>canCampaign(user,r.account,r.campaign)).map(({account,campaign,campaign_type,currency,period,micros,updated,stale})=>({account,campaign,campaign_type,currency,period,micros,updated,stale})),warnings:[]});
   }
-  if(path==='/roi-grid')return authJSON(await gridData({site:url.searchParams.get('site'),end:url.searchParams.get('end')},user));
+    if(path==='/roi-grid')return authJSON(await gridData({site:url.searchParams.get('site'),end:url.searchParams.get('end')},user));
   if(path==='/placements'){const body=Object.fromEntries(['account','campaign','start','end'].map(k=>[k,url.searchParams.get(k)]));if(!canCampaign(user,body.account,body.campaign))return denied();return authJSON(await placements.read(body,{reader:true}));}
   if(path==='/campaign-analysis'){const account=url.searchParams.get('account'),campaign=url.searchParams.get('campaign');if(!canCampaign(user,account,campaign))return denied();return authJSON(await analysis.list(account,campaign,{reader:true}));}
   if(path==='/campaign-changes'){
@@ -121,6 +123,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   try{
    if(user?.role==='reader')return await readOnly(request,user);
    if(method==='GET'){
+    if(path==='/deductions')return authJSON(deductions.read());
     if(path==='/roi-grid')return authJSON(await gridData({site:url.searchParams.get('site'),end:url.searchParams.get('end')},user));
     if(path==='/placements')return authJSON(await placements.read(Object.fromEntries(['account','campaign','start','end'].map(k=>[k,url.searchParams.get(k)]))));
     if(path==='/campaign-analysis')return authJSON(await analysis.list(url.searchParams.get('account'),url.searchParams.get('campaign')));
@@ -140,6 +143,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
    if(!['POST','DELETE'].includes(method))return authJSON({error:'Método não permitido.'},405);
    if(!request.headers.get('content-type')?.startsWith('application/json'))return authJSON({error:'Envie JSON.'},415);
    let body;try{body=await request.json();}catch{throw new AdsError('JSON inválido.',{status:400});}if(!body||typeof body!=='object'||Array.isArray(body))throw new AdsError('Dados inválidos.',{status:400});
+   if(path==='/deductions'&&method==='POST'){const saved=deductions.save(body,(await catalog()).networks,user?.email||'administrator');warehouse.touch();return authJSON(saved);}
    if(path==='/roi-grid/ensure'&&method==='POST'){const {scope}=await gridScope(body);if(active)return authJSON({id:runningJob()?.id||null},202);const plan=warehouse.missingRanges(scope);if(!plan.length)return authJSON({id:null});return authJSON({id:launch(scope,{mode:'on-demand',plan}).id},202);}
    if((path==='/placements/ensure'||path==='/placements/refresh')&&method==='POST')return authJSON(await placements.launch(body,{force:path.endsWith('/refresh')}),202);
    if(path==='/campaign-analysis'&&method==='POST')return authJSON(await analysis.launch(body.account,body.campaign),202);

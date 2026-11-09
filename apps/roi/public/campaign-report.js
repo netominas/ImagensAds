@@ -23,6 +23,7 @@ export function dailyReport(rows,rates={},start,end){
   const cost=day.missingCost?null:day.cost,revenue=day.missingRevenue||rows.some(r=>r.revenue==null)?null:day.revenue,comparable=day.comparable&&cost!=null&&revenue!=null,profit=comparable?revenue-cost:null;
   const gam_original=rows.flatMap(r=>r.gam_original||[]).filter(f=>f.date===day.date);
   const ads_original=rows.every(r=>Array.isArray(r.ads_original))?rows.flatMap(r=>r.ads_original).filter(f=>f.date===day.date):null;
-  return {...gamMetrics(gam_original,rates),...adsMetrics(ads_original,rates),ads_original,gam_original,date:day.date,cost,revenue,profit,roi:comparable&&cost>0?profit/cost:null,comparable};
+  const deductions=rows.flatMap(r=>r.deduction_days||[]).filter(d=>d.date===day.date),sum=key=>deductions.reduce((s,d)=>s+(d[key]||0),0);
+  return {gross_revenue:deductions.length?sum('gross_revenue'):revenue,revenue_share:sum('revenue_share'),company_tax:sum('company_tax'),...gamMetrics(gam_original,rates),...adsMetrics(ads_original,rates),ads_original,gam_original,date:day.date,cost,revenue,profit,roi:comparable&&cost>0?profit/cost:null,comparable};
  });
 }

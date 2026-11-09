@@ -8,7 +8,7 @@ export function roiGridPanel({api,readOnly=false,finalURLCell,infoButton,recentU
   recentUI.close();
   const q=$('roi-grid-search').value.trim().toLocaleLowerCase('pt-BR');visible=(data?.rows||[]).filter(r=>!q||[r.name,r.campaign].join(' ').toLocaleLowerCase('pt-BR').includes(q));
   visible.sort((a,b)=>{const x=sort==='name'?a.name:sort==='cost_total'?a.cost_total:a.cells.find(c=>c.date===sort)?.roi,y=sort==='name'?b.name:sort==='cost_total'?b.cost_total:b.cells.find(c=>c.date===sort)?.roi;if(x==null)return y==null?0:1;if(y==null)return -1;return (typeof x==='string'?x.localeCompare(y,'pt-BR'):x-y)*direction;});
-  $('roi-grid-subtitle').textContent=data?data.site+' · '+date(data.start)+' a '+date(data.end)+' · 10 dias, incluindo a data final':context?.site||'';
+  $('roi-grid-subtitle').textContent=data?data.site+' · '+date(data.start)+' a '+date(data.end)+' · 10 dias, incluindo a data final'+(data.deductions?.enabled?' · Descontos ativos':''):context?.site||'';
   $('roi-grid-head').innerHTML='<tr><th scope="col"><button type="button" data-grid-sort="name">Nome da campanha'+(sort==='name'?(direction===1?' ↑':' ↓'):'')+'</button></th>'+(data?.dates||[]).map(d=>'<th scope="col" title="'+date(d)+'"><button type="button" data-grid-sort="'+d+'">'+d.slice(8,10)+'/'+d.slice(5,7)+(sort===d?(direction===1?' ↑':' ↓'):'')+(d===data.today?'<small>Hoje</small>':'')+'</button></th>').join('')+'</tr>';
   $('roi-grid-head').querySelectorAll('[data-grid-sort]').forEach(b=>b.onclick=()=>{direction=sort===b.dataset.gridSort?-direction:-1;sort=b.dataset.gridSort;render();});
   const link=(r,d)=>'/apps/roi/?'+new URLSearchParams({account:r.account,campaign:r.campaign,site:context.site,...(d?{start:d,end:d}:{start:data.start,end:data.end})});
