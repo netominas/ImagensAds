@@ -1,3 +1,4 @@
+import {placementGridPeriod,placementGrid} from './placement-grid.mjs';
 import {randomBytes} from 'node:crypto';
 import {AdsError} from '../google-ads/client.mjs';
 import {dateRange} from './admanager.mjs';
@@ -74,5 +75,6 @@ export function createPlacements(db,{google,admanager,catalog,settings,warehouse
   void collect(id,body,account,networks,force);return {id};
  }
  async function tick(){if(!autoSync||stopped||active||isBusy())return;const rows=db.prepare('SELECT * FROM roi_placement_subscriptions WHERE last_attempt IS NULL OR last_attempt<? ORDER BY last_attempt LIMIT 1').all(new Date(clock()-1800000).toISOString());for(const r of rows){try{await launch({account:r.account,campaign:r.campaign,start:shiftDay(today(),-6),end:today()});db.prepare('UPDATE roi_placement_subscriptions SET last_attempt=? WHERE account=? AND campaign=?').run(stamp(),r.account,r.campaign);}catch{db.prepare('UPDATE roi_placement_subscriptions SET last_attempt=? WHERE account=? AND campaign=?').run(stamp(),r.account,r.campaign);}}}
- return {read,launch,tick,activeJobs:()=>Number(active),start(){if(!autoSync||timer||stopped)return;initial=setTimeout(()=>void tick().catch(()=>{}),20000);initial.unref?.();timer=setInterval(()=>void tick().catch(()=>{}),60000);timer.unref?.();},stop(){stopped=true;clearTimeout(initial);clearInterval(timer);}};
+ async function grid(body,options={}){const range=placementGridPeriod(body),days=[];for(const date of daysBetween(range.start,range.end))days.push({date,report:await read({...range,start:date,end:date},options)});return placementGrid({...range,days});}
+ return {read,launch,grid,gridScope:placementGridPeriod,tick,activeJobs:()=>Number(active),start(){if(!autoSync||timer||stopped)return;initial=setTimeout(()=>void tick().catch(()=>{}),20000);initial.unref?.();timer=setInterval(()=>void tick().catch(()=>{}),60000);timer.unref?.();},stop(){stopped=true;clearTimeout(initial);clearInterval(timer);}};
 }

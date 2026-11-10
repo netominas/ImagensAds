@@ -1,3 +1,4 @@
+import {placementGridPanel} from './placement-grid.js';
 import {placementPeriod,validatePlacementPeriod} from './report-period.js';
 import {stickyReportHeader} from './sticky-report.js';
 export function placementsPanel({api,readOnly=false}){
@@ -6,6 +7,7 @@ export function placementsPanel({api,readOnly=false}){
  const status={deductions_pending:'Descontos pendentes',matched:'Vinculado',cost_only:'Sem receita vinculada',revenue_only:'Sem custo identificado',timezone:'Fusos diferentes',incomplete:'Coleta pendente',ambiguous_campaign:'Campanha ambígua',revenue_overlap:'Receita divergente',unmapped_type:'Formato ainda não conciliado'};
  const columns=[['placement','Placement'],['clicks','Cliques Ads'],['cost','Custo'],['revenue','Receita'],['profit','Lucro'],['roi','ROI %'],['ecpm','eCPM'],['pmr','PMR'],['cpc','CPC GAM'],['conversion_rate','Conversão'],['cost_per_conversion','Custo/Conv'],['ads_cpc','CPC Ads']];
  let context=null,key='',version=0,timer=null,busy=false,data=null,sort='cost',direction=-1,exportRows=[],ownPeriod=false,pendingEnsure=false;
+ const grid=placementGridPanel({api,readOnly});$('placements-grid').onclick=()=>{if(context)grid.open({...context,name:document.getElementById('campaign-detail-name').textContent});};
  stickyReportHeader(panel);$('placements-refresh').textContent=readOnly?'Recarregar placements':'Atualizar placements';
  function message(text){$('placements-message').textContent=text;}
  function filtered(){const q=$('placements-search').value.trim().toLocaleLowerCase('pt-BR'),filter=$('placements-filter').value;return (data?.rows||[]).filter(r=>!q||r.placement.toLocaleLowerCase('pt-BR').includes(q)).filter(r=>filter==='all'||(filter==='matched'?r.comparable:!r.comparable)).sort((a,b)=>{const x=a[sort],y=b[sort];if(x==null)return y==null?0:1;if(y==null)return -1;return (typeof x==='string'?x.localeCompare(y,'pt-BR'):x-y)*direction;});}
@@ -44,7 +46,7 @@ export function placementsPanel({api,readOnly=false}){
   const sameCampaign=scope&&context&&scope.account===context.account&&scope.campaign===context.campaign;
   // Parent refreshes must not overwrite a period chosen inside this block.
   if(sameCampaign&&ownPeriod)return;
-  if(!sameCampaign)$('placements-disclosure').open=false;
+  if(!sameCampaign){grid.close();$('placements-disclosure').open=false;}
   ownPeriod=false;sort='cost';direction=-1;$('placements-search').value='';$('placements-filter').value='all';dateInputs(scope);changeContext(scope);
  }};
 }

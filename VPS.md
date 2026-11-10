@@ -220,3 +220,11 @@ O bloco e o coletor aceitam `DISPLAY` e `DEMAND_GEN`. A verificação de tipo oc
 ## Blocos recolhíveis de histórico e IA
 
 Histórico de alterações e Análise diária por IA usam `details/summary`, com seta, teclado e o mesmo estilo do ROI por placement. Começam fechados ao abrir/trocar de campanha; atualizações na mesma campanha preservam a escolha de expansão. Os formulários, dados e permissões permanecem dentro dos blocos, e recolher não inicia nem interrompe gerações de IA ou coletas.
+
+## Grade diária de placements
+
+O ícone de grade junto à pesquisa do bloco ROI por placement abre um diálogo, sem nova página, com canais nas linhas e dez dias até a data final do filtro local nas colunas. Exibe ROI (%) ou lucro (BRL), pesquisa, ordenação por nome/data, cabeçalho/primeira coluna fixos, detalhes de custo/receita/lucro/ROI ao passar o mouse ou tocar e exportação CSV com todas as métricas diárias. Usa a campanha inteira, incluindo todos os sites, como o bloco de origem. Datas e exportação do relatório principal não mudam.
+
+GET `/apps/roi/api/placement-grid?account=...&campaign=...&end=...` compõe dez leituras diárias do cache de placements, reaproveitando a conciliação e os descontos por campanha/site/dia. Não consulta provedores nem soma médias de ROI. Une canais pela chave canônica e inclui placements ativos em qualquer dia. Custo zero preserva lucro e deixa ROI indefinido; ausência de utm_content, falhas, incompatibilidades e dias sem atividade permanecem identificados, sem rateio ou zeros fabricados.
+
+POST `/apps/roi/api/placement-grid/ensure` valida o escopo de dez dias e usa a fila existente de placements para importar o que estiver ausente/desatualizado. Exige administrador, sessão e origem válida. Leitores podem consultar somente campanhas autorizadas e não iniciam coletas. O diálogo aguarda uma coleta em andamento antes de solicitar os dias restantes; fechar invalida respostas pendentes. Não cria tabelas, altera campanhas ou expõe arquivos privados. O novo módulo público `placement-grid.js` está na lista explícita de arquivos servidos. Testes em `tests/roi-placement-grid.test.mjs` cobrem datas, sinais, ausências, descontos, cache sem chamadas externas e isolamento de permissões.
