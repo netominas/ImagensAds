@@ -1,6 +1,6 @@
 const views=['fixed','monthly','expense','catalog'];
 const headings={
- fixed:['Finanças','Acompanhe os gastos fixos da casa com seus filtros e resumos.'],
+ fixed:['Finanças',''],
  monthly:['Lançamentos do mês','Confira os pagamentos e as despesas do período selecionado.'],
  expense:['Nova despesa','Cadastre uma despesa fixa mensal ou um lançamento com data.'],
  catalog:['Categorias e grupos','Organize suas classificações e altere os nomes quando precisar.']
@@ -10,9 +10,10 @@ export function showFinanceView(view){
  if(!views.includes(view))return;
  for(const name of views){document.getElementById(name+'-view').hidden=name!==view;const button=document.getElementById('show-'+name);if(name===view)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');}
  document.getElementById('monthly-filter').hidden=view!=='monthly';
+ document.getElementById('page-heading').hidden=view==='fixed';
  document.getElementById('page-title').textContent=headings[view][0];document.getElementById('page-description').textContent=headings[view][1];
  document.getElementById('message').textContent='';closeMenu();window.scrollTo({top:0,behavior:'instant'});
- const title=document.getElementById('page-title');title.tabIndex=-1;title.focus({preventScroll:true});
+ const title=document.getElementById(view==='fixed'?'fixed-view':'page-title');title.tabIndex=-1;title.focus({preventScroll:true});
 }
 function selectEditor(type){document.getElementById('expense-type').value=type;for(const name of ['fixed','monthly'])document.getElementById(name+'-editor').hidden=name!==type;}
 export function showExpenseEditor(type,editing=false){

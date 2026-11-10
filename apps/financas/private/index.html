@@ -10,10 +10,9 @@
 <a class="sidebar-back" href="/">← Todas as aplicações</a>
 </aside>
 <div class="finance-content"><main>
-<div class="heading"><div><span class="eyebrow">SUA CASA, SUAS CONTAS</span><h1 id="page-title">Finanças</h1><p id="page-description" class="subtle">Acompanhe os gastos fixos da casa com seus filtros e resumos.</p></div><label id="monthly-filter" hidden>Mês de referência<input id="month" type="month" min="1900-01" max="2100-12" required></label></div>
+<div id="page-heading" class="heading" hidden><div><span class="eyebrow">SUA CASA, SUAS CONTAS</span><h1 id="page-title">Finanças</h1><p id="page-description" class="subtle"></p></div><label id="monthly-filter" hidden>Mês de referência<input id="month" type="month" min="1900-01" max="2100-12" required></label></div>
 <p id="message" role="status" aria-live="polite"></p>
 <section id="fixed-view" aria-label="Planejamento mensal de despesas fixas">
-<p class="subtle">Valores recorrentes previstos para cada mês. Este cadastro não informa vencimentos e não marca despesas como pagas.</p>
 <section class="summary" aria-label="Resumo das despesas fixas"><article><span>Compromisso fixo mensal</span><strong id="fixed-total">—</strong><small>Previsão mensal em reais</small></article><article><span>Total selecionado</span><strong id="fixed-selected-total">—</strong><small>Conforme os filtros abaixo</small></article><article><span>Despesas selecionadas</span><strong id="fixed-selected-count">—</strong><small>Quantidade de gastos exibidos</small></article></section>
 <section id="fixed-filters" class="panel expense-filters" aria-label="Filtrar despesas fixas"></section>
 <section id="fixed-ledger" class="panel ledger"><div class="section-title"><h2>Despesas fixas mensais</h2><span id="fixed-count"></span></div><p id="fixed-empty" hidden>Nenhuma despesa fixa cadastrada.</p><div class="table-wrap"><table><caption class="sr-only">Planejamento mensal de despesas fixas</caption><thead><tr><th>Descrição</th><th>Categoria</th><th>Grupo</th><th class="number">Valor mensal</th><th>Ações</th></tr></thead><tbody id="fixed-items"></tbody></table></div></section>
