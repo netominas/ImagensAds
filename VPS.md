@@ -216,3 +216,7 @@ Não altera as APIs nem amplia permissões: leitores apenas consultam o cache au
 ## Placements em Geração de Demanda
 
 O bloco e o coletor aceitam `DISPLAY` e `DEMAND_GEN`. A verificação de tipo ocorre nos metadados da API, na seleção da fila e na validação de propriedade do cache; a conciliação mantém campanha + placement + utm_content. A coleta continua usando `group_placement_view` e os totais da campanha separados, sem ratear custo entre sites/YouTube/aplicativos. Uma campanha Demand Gen sem linhas detalhadas pode apresentar receita sem custo ou nenhum placement; lucro e ROI não são inventados. Pesquisa, PMax e demais tipos continuam fora deste módulo. Datas independentes, descontos e permissões de leitores permanecem iguais. O teste de Demand Gen cobre coleta, cache, receita GAM, lucro e bloqueio de tipos não suportados.
+
+## Blocos recolhíveis de histórico e IA
+
+Histórico de alterações e Análise diária por IA usam `details/summary`, com seta, teclado e o mesmo estilo do ROI por placement. Começam fechados ao abrir/trocar de campanha; atualizações na mesma campanha preservam a escolha de expansão. Os formulários, dados e permissões permanecem dentro dos blocos, e recolher não inicia nem interrompe gerações de IA ou coletas.

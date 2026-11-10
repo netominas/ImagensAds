@@ -27,5 +27,5 @@ export function campaignChangePanel({api,onSaved=()=>{},onLoaded=()=>{}}){
   catch(error){if(current===version)message(error.message,true);}
   finally{if(current===version)busy(false);}
  };
- return {refresh:()=>context?load():Promise.resolve(),show(scope){panel.hidden=!scope;const next=scope?scope.account+':'+scope.campaign:'';if(next===key)return;key=next;context=scope;version++;items=[];$('changes-list').textContent='';$('changes-count').textContent='0';$('change-editor').open=false;reset();message('');if(scope)void load();}};
+ return {refresh:()=>context?load():Promise.resolve(),show(scope){panel.hidden=!scope;const next=scope?scope.account+':'+scope.campaign:'';if(next===key)return;$('changes-disclosure').open=false;key=next;context=scope;version++;items=[];$('changes-list').textContent='';$('changes-count').textContent='0';$('change-editor').open=false;reset();message('');if(scope)void load();}};
 }
