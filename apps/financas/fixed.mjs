@@ -43,7 +43,9 @@ export function createFixedAPI(db,catalog){
     return authJSON(db.prepare('SELECT * FROM finance_fixed_expenses WHERE id=?').get(id),201);
    }
    if(!body||!Number.isSafeInteger(body.revision)||body.revision<1)fail('Recarregue antes de alterar.');
-   if(!db.prepare('SELECT id FROM finance_fixed_expenses WHERE id=?').get(match[1]))fail('Despesa fixa não encontrada.',404);
+   const current=db.prepare('SELECT revision FROM finance_fixed_expenses WHERE id=?').get(match[1]);
+   if(!current)fail('Despesa fixa não encontrada.',404);
+   if(current.revision!==body.revision)fail('Esta despesa mudou. Recarregue antes de alterar.',409);
    const result=method==='PUT'
     ?db.prepare('UPDATE finance_fixed_expenses SET description=?,amount_cents=?,category=?,area=?,revision=revision+1,updated=? WHERE id=? AND revision=?').run(...validate(body),new Date().toISOString(),match[1],body.revision)
     :db.prepare('DELETE FROM finance_fixed_expenses WHERE id=? AND revision=?').run(match[1],body.revision);

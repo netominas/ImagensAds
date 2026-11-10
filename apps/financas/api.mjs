@@ -28,7 +28,7 @@ export function createFinanceAPI(storage){
  }
  return async request=>{
   const url=new URL(request.url),path=url.pathname,method=request.method;
-  if(['/apps/financas/api/catalog','/apps/financas/api/categories','/apps/financas/api/groups'].includes(path))return catalog.api(request);
+  if(['/apps/financas/api/catalog','/apps/financas/api/categories','/apps/financas/api/groups'].includes(path)||path.startsWith('/apps/financas/api/categories/')||path.startsWith('/apps/financas/api/groups/'))return catalog.api(request);
   if(path==='/apps/financas/api/fixed'||path.startsWith('/apps/financas/api/fixed/'))return fixedAPI(request);
   if(!['GET','HEAD'].includes(method)&&!sameOrigin(request))return authJSON({error:'Origem não permitida.'},403);
   try{
@@ -54,7 +54,9 @@ export function createFinanceAPI(storage){
    if(!['PUT','DELETE'].includes(method))return authJSON({error:'Método não permitido.'},405);
    let body;try{body=await request.json();}catch{fail('JSON inválido.');}
    if(!body||!Number.isSafeInteger(body.revision)||body.revision<1)fail('Recarregue a despesa antes de alterar.');
-   if(!db.prepare('SELECT id FROM finance_expenses WHERE id=?').get(match[1]))fail('Despesa não encontrada.',404);
+   const current=db.prepare('SELECT revision FROM finance_expenses WHERE id=?').get(match[1]);
+   if(!current)fail('Despesa não encontrada.',404);
+   if(current.revision!==body.revision)fail('Esta despesa mudou em outra aba. Recarregue antes de alterar.',409);
    const result=method==='PUT'
     ?db.prepare('UPDATE finance_expenses SET description=?,amount_cents=?,category=?,date=?,status=?,area=?,revision=revision+1,updated=? WHERE id=? AND revision=?').run(...validate(body),new Date().toISOString(),match[1],body.revision)
     :db.prepare('DELETE FROM finance_expenses WHERE id=? AND revision=?').run(match[1],body.revision);

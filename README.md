@@ -2,6 +2,8 @@
 
 ## Finanças da casa
 
+Cada categoria ou grupo pode ser renomeado pelo botão **Renomear**. A mudança de categoria atualiza as duas tabelas de despesas em uma transação e incrementa suas revisões para impedir que uma edição antiga sobrescreva a classificação. Grupos preservam o ID e atualizam o nome exibido em todas as telas. Os valores, pagamentos, datas e identificadores das despesas são preservados. A revisão do catálogo detecta alterações concorrentes; nomes duplicados são recusados e nomes padrão renomeados não reaparecem após reinício.
+
 Na aba **Categorias e grupos**, o administrador pode criar nomes para usar nas despesas fixas e nos lançamentos mensais. Os catálogos ficam nas tabelas próprias `finance_categories` e `finance_groups`, com nomes normalizados para impedir duplicidade por caixa ou espaços, limite de 60 caracteres por nome e 100 itens por catálogo. Grupos mantêm IDs estáveis; os originais `home` e `work` são preservados. A migração libera grupos personalizados na tabela de despesas fixas sem alterar seus registros e adiciona o grupo Pessoal e casa aos lançamentos antigos. Totais exibem todos os grupos cadastrados.
 
 A visão inicial **Despesas fixas mensais** mantém um planejamento recorrente separado dos lançamentos realizados, na tabela própria `finance_fixed_expenses`. Ela dispensa datas e situação de pagamento e mostra totais de Pessoal e casa, Trabalho e distribuição por categoria. Não gera lançamentos nem pagamentos automaticamente. Criar, editar e excluir seguem a mesma autenticação administrativa, validação de origem, centavos inteiros e controle de revisão. Os dados pessoais importados ficam apenas no banco, fora do Git.

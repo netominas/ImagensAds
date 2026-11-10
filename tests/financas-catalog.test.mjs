@@ -22,7 +22,7 @@ test('catalog migration preserves existing rows; custom categories and groups pe
  const send=(path,method='GET',data,origin=env.APP_ORIGIN)=>fetch(base+'/apps/financas/api/'+path,{method,headers:{Origin:origin,'Content-Type':'application/json',...(cookie?{Cookie:cookie}:{})},...(data===undefined?{}:{body:JSON.stringify(data)})});
  try{
   await start();assert.deepEqual({...storage.db.prepare('SELECT * FROM finance_fixed_expenses').get()},fixed);assert.equal(storage.db.prepare('SELECT area FROM finance_expenses').get().area,'home');
-  for(const [path,method,body] of [['catalog','GET'],['categories','POST',{name:'Pet'}],['groups','POST',{name:'Farm'}]])assert.equal((await send(path,method,body)).status,401);
+  for(const [path,method,body] of [['catalog','GET'],['categories','POST',{name:'Pet'}],['groups','POST',{name:'Farm'}],['groups/home','PUT',{name:'Renamed',revision:1}],['categories/'+ 'a'.repeat(36),'PUT',{name:'Renamed',revision:1}]])assert.equal((await send(path,method,body)).status,401);
   const login=await fetch(base+'/api/login',{method:'POST',headers:{Origin:env.APP_ORIGIN,'Content-Type':'application/json'},body:JSON.stringify({email:env.ADMIN_EMAIL,password:'catalog-test-password'})});cookie=login.headers.get('set-cookie').split(';')[0];
   assert.equal((await send('categories','POST',{name:'No'},'https://evil.test')).status,403);assert.equal((await send('groups','POST',{name:'No'},'https://evil.test')).status,403);
   for(const name of ['', ' '.repeat(4), 'x'.repeat(61), 'bad\u0000name'])assert.equal((await send('categories','POST',{name})).status,400);
@@ -41,5 +41,6 @@ test('catalog migration preserves existing rows; custom categories and groups pe
   await createUsers(storage.db,env).save({name:'Reader',email:'reader@example.test',password:'catalog-reader-password',active:true,grants:[]},env.ADMIN_EMAIL,async()=>({accounts:[]}));
   const reader=await fetch(base+'/api/login',{method:'POST',headers:{Origin:env.APP_ORIGIN,'Content-Type':'application/json'},body:JSON.stringify({email:'reader@example.test',password:'catalog-reader-password'})});cookie=reader.headers.get('set-cookie').split(';')[0];
   assert.equal((await send('catalog')).status,403);assert.equal((await send('categories','POST',{name:'Denied'})).status,403);assert.equal((await send('groups','POST',{name:'Denied'})).status,403);
+  assert.equal((await send('groups/home','PUT',{name:'Denied',revision:1})).status,403);assert.equal((await send('categories/'+ 'a'.repeat(36),'PUT',{name:'Denied',revision:1})).status,403);
  }finally{if(server)await stop();await rm(dir,{recursive:true,force:true});}
 });
