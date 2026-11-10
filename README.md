@@ -2,6 +2,8 @@
 
 ## Finanças da casa
 
+Categorias e grupos têm uma paleta compartilhada nos cards de filtro, nas etiquetas da lista de despesas, nas listas de cadastro e nas barras de distribuição. A ordem estável do catálogo mantém as cores ao renomear ou criar novos itens, sem alterar os dados financeiros. Cards ativos também exibem um símbolo de seleção e os nomes permanecem visíveis; a cor é uma identificação adicional.
+
 A navegação lateral separa Despesas fixas, Lançamentos do mês, Nova despesa e Categorias e grupos. Os painéis de acompanhamento exibem resumos, filtros e listas; o cadastro fica em uma tela própria com seleção de tipo. Editar abre o formulário correspondente; salvar ou cancelar edição retorna à lista, preservando os filtros. Os gráficos de distribuição ficam recolhidos após as listas. Em telas menores o menu é expansível pelo botão Menu e fecha ao navegar ou pressionar Escape. A reorganização não altera as tabelas nem os dados existentes.
 
 Cards de categorias e grupos filtram localmente os dados já autorizados em cada visão. É possível combinar um grupo e uma categoria; clicar novamente desmarca e **Mostrar todos** limpa a seleção. Os cards mostram o total de cada classificação no conjunto completo da visão/período; o status e a lista mostram a interseção selecionada. Despesas fixas exibem também subtotal e quantidade selecionados, e os totais pago/pendente dos lançamentos mensais acompanham o filtro. Cada visão mantém sua seleção independente, inclusive após recarregar os dados. Os filtros usam IDs do catálogo para acompanhar renomeações. Nenhum dado é alterado ao filtrar.

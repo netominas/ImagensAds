@@ -3,6 +3,7 @@ import {initFixed} from './fixed.js';
 import {initCatalog,fillFinanceSelects} from './catalog.js';
 import {createExpenseFilters} from './filters.js';
 import {initNavigation,showExpenseEditor,showFinanceView} from './navigation.js';
+import {applyClassificationColor,categoryId,colorExpenseRow} from './colors.js';
 const $=id=>document.getElementById(id),form=$('expense-form'),month=$('month');
 const money=cents=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(cents/100);
 const localDate=()=>{const now=new Date();return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;};
@@ -24,13 +25,14 @@ function renderRows(rows,filtered){
   $('categories').replaceChildren();$('expenses').replaceChildren();
   for(const [name,value] of Object.entries(summary.categories).sort((a,b)=>b[1]-a[1])){
    if(!value)continue;
-   const row=document.createElement('div');row.className='category-row';const label=document.createElement('div');label.className='category-label';const title=document.createElement('span'),amount=document.createElement('strong');title.textContent=name;amount.textContent=money(value);label.append(title,amount);
+   const row=document.createElement('div');row.className='category-row';applyClassificationColor(row,currentData,'category',categoryId(currentData,name));const label=document.createElement('div');label.className='category-label';const title=document.createElement('span'),amount=document.createElement('strong');title.textContent=name;amount.textContent=money(value);label.append(title,amount);
    const track=document.createElement('div'),fill=document.createElement('div');track.className='category-track';fill.className='category-fill';fill.style.width=(value/summary.total*100)+'%';track.append(fill);row.append(label,track);$('categories').append(row);
   }
   if(!rows.length)$('categories').textContent='Nenhuma despesa para esta seleção.';
   $('count').textContent=`${rows.length} de ${expenses.length} lançamentos`;$('empty').hidden=rows.length>0;$('empty').textContent=filtered?'Nenhuma despesa corresponde aos filtros selecionados.':'Nenhuma despesa neste mês. Comece adicionando uma despesa da casa.';
   for(const expense of rows){
    const row=document.createElement('tr');cell(row,expense.date.split('-').reverse().join('/'));cell(row,expense.description);cell(row,expense.category);cell(row,currentData.groups.find(g=>g.id===expense.area)?.name||expense.area);
+   colorExpenseRow(row,expense,currentData,2,3);
    const badge=document.createElement('span');badge.className='status '+expense.status;badge.textContent=expense.status==='paid'?'Pago':'Pendente';const status=document.createElement('td');status.append(badge);row.append(status);cell(row,money(expense.amount_cents),'number');
    const actions=document.createElement('td');
    for(const [name,handler] of [['Editar',()=>edit(expense)],['Excluir',()=>remove(expense)]]){const button=document.createElement('button');button.type='button';button.textContent=name;button.setAttribute('aria-label',`${name}: ${expense.description}`);button.disabled=busy;button.onclick=handler;actions.append(button);}row.append(actions);$('expenses').append(row);

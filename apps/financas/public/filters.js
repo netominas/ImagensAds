@@ -1,3 +1,4 @@
+import {applyClassificationColor} from './colors.js';
 export function selectExpenses(items,catalog,selection){
  const category=catalog.categoryItems.find(c=>c.id===selection.category);
  return items.filter(item=>(!category||item.category===category.name)&&(!selection.group||item.area===selection.group));
@@ -11,6 +12,7 @@ export function createExpenseFilters(prefix,onChange){
   const button=document.createElement('button'),title=document.createElement('span'),value=document.createElement('strong'),count=document.createElement('small');
   button.type='button';button.className='expense-filter-card';button.setAttribute('aria-pressed',String(selection[type]===id));button.setAttribute('aria-label','Filtrar por '+(type==='group'?'grupo: ':'categoria: ')+name);
   button.setAttribute('aria-controls',prefix==='fixed'?'fixed-items':'expenses');
+  applyClassificationColor(button,catalog,type,id);
   title.textContent=name;value.textContent=money(rows.reduce((sum,row)=>sum+row.amount_cents,0));count.textContent=`${rows.length} ${rows.length===1?'despesa':'despesas'}`;button.append(title,value,count);
   button.onclick=()=>{selection[type]=selection[type]===id?null:id;render();notify();};
   return button;
