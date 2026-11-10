@@ -26,7 +26,7 @@ export function createPlacements(db,{google,admanager,catalog,settings,warehouse
   const filter=`campaign.id=${campaign} AND segments.date BETWEEN '${range.start}' AND '${range.end}'`,fields='metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.average_cpc, metrics.conversions, metrics.interactions, metrics.conversions_from_interactions_rate, metrics.cost_per_conversion';
   const customer=(await google.search(account.id,'SELECT customer.currency_code, customer.time_zone FROM customer',account.mcc))[0]?.customer;if(!customer)throw Error('No customer');
   const metadata=(await google.search(account.id,`SELECT campaign.id, campaign.name, campaign.advertising_channel_type FROM campaign WHERE campaign.id=${campaign}`,account.mcc))[0]?.campaign;
-  if(!metadata||metadata.advertisingChannelType!=='DISPLAY')throw new AdsError('Este relatório está disponível somente para campanhas de Display.',{status:400});
+  if(!metadata||!['DISPLAY','DEMAND_GEN'].includes(metadata.advertisingChannelType))throw new AdsError('Este relatório está disponível para campanhas de Display e Geração de Demanda.',{status:400});
   const totals=await google.search(account.id,`SELECT campaign.id, segments.date, ${fields} FROM campaign WHERE ${filter}`,account.mcc);
   const rows=await google.search(account.id,`SELECT campaign.id, ad_group.id, group_placement_view.placement, group_placement_view.placement_type, group_placement_view.target_url, segments.date, ${fields} FROM group_placement_view WHERE ${filter}`,account.mcc);
   const fact=r=>{const m=r.metrics||{};return {account:account.id,campaign,date:r.segments.date,currency:customer.currencyCode,timezone:customer.timeZone,cost:Number(m.costMicros||0)/1e6,impressions:Number(m.impressions||0),clicks:Number(m.clicks||0),ads_metrics:{clicks:Number(m.clicks||0),average_cpc:Number(m.averageCpc||0)/1e6,interactions:Number(m.interactions||0),conversions:Number(m.conversions||0),conversion_rate:Number(m.conversionsFromInteractionsRate||0),cost_per_conversion:Number(m.costPerConversion||0)/1e6}};};
@@ -44,7 +44,7 @@ export function createPlacements(db,{google,admanager,catalog,settings,warehouse
    const records=stored(kind,id,start,end),has=records.filter(r=>r.data).length,failed=records.some(r=>r.error);complete=complete&&has===count;stale=stale||failed;sources.push({name:reader?(kind==='ads'?'Google Ads':'Ad Manager'):label,complete:has===count,error:records.find(r=>r.error)?.error||null});
    for(const r of records){if(!r.data)continue;times.push(r.updated);const data=JSON.parse(r.data);if(kind==='ads'){ads.push(...data.placements);totals.push(...data.totals);}else revenues.push(...data.facts.filter(f=>f.campaign===campaign));}
   }
-  const owned=stored('ads',source(account,campaign),start,end).some(r=>r.data&&JSON.parse(r.data).type==='DISPLAY');if(!owned)revenues.length=0;
+  const owned=stored('ads',source(account,campaign),start,end).some(r=>r.data&&['DISPLAY','DEMAND_GEN'].includes(JSON.parse(r.data).type));if(!owned)revenues.length=0;
   const rates=Object.fromEntries(db.prepare('SELECT day,data FROM roi_fx_days WHERE day BETWEEN ? AND ?').all(start,end).map(r=>[r.day,JSON.parse(r.data)]));
   const collision=Boolean(db.prepare("SELECT 1 FROM roi_daily_facts WHERE kind='ads' AND json_extract(data,'$.campaign')=? AND source!=? LIMIT 1").get(campaign,account));
   if(reader&&collision)revenues.length=0;
@@ -66,7 +66,7 @@ export function createPlacements(db,{google,admanager,catalog,settings,warehouse
  }
  async function launch(body,{force=false}={}){
   const {account,networks}=await validate(body);if(!networks.length)throw new AdsError('Selecione as redes Ad Manager nas fontes do ROI.',{status:409});if(stopped)throw new AdsError('Serviço em encerramento.',{status:503});
-  const known=db.prepare("SELECT json_extract(data,'$.campaign_type') type FROM roi_daily_facts WHERE kind='ads' AND source=? AND json_extract(data,'$.campaign')=? AND json_extract(data,'$.campaign_type') IS NOT NULL LIMIT 1").get(body.account,body.campaign);if(known&&known.type!=='DISPLAY')throw new AdsError('Este relatório está disponível somente para campanhas de Display.',{status:400});
+  const known=db.prepare("SELECT json_extract(data,'$.campaign_type') type FROM roi_daily_facts WHERE kind='ads' AND source=? AND json_extract(data,'$.campaign')=? AND json_extract(data,'$.campaign_type') IS NOT NULL LIMIT 1").get(body.account,body.campaign);if(known&&!['DISPLAY','DEMAND_GEN'].includes(known.type))throw new AdsError('Este relatório está disponível para campanhas de Display e Geração de Demanda.',{status:400});
   const own=db.prepare("SELECT id FROM roi_placement_jobs WHERE account=? AND campaign=? AND status='running'").get(body.account,body.campaign);if(own)return {id:own.id};if(active)throw new AdsError('Há outra coleta de placements em andamento. Aguarde e tente novamente.',{status:409});
   db.prepare('INSERT INTO roi_placement_subscriptions VALUES (?,?,?,NULL) ON CONFLICT(account,campaign) DO UPDATE SET touched=excluded.touched').run(body.account,body.campaign,stamp());
   const needed=plan('ads',source(body.account,body.campaign),body.start,body.end,force).length||networks.some(n=>plan('gam',n.id,body.start,body.end,force).length);if(!needed)return {id:null};

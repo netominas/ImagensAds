@@ -25,10 +25,10 @@ test('unmatched, Other, missing FX, timezone, stale, incomplete and ambiguous re
  for(const patch of [{complete:false},{stale:true},{collision:true},{revenues:[gam({currency:'USD'})]},{revenues:[gam({timezone:'America/New_York'})]},{baseline:{revenue:10}}])assert.equal(placementReport({...base,...patch}).rows[0].profit,null);
  const r=placementReport({...base,ads:[ads({placement:'Other',placement_key:null}),ads({placement:'unmatched.com',placement_key:placementKey('unmatched.com')})]});assert.ok(r.rows.every(r=>r.profit===null));assert.equal(r.rows.find(r=>r.placement==='portal.com').cost,null);assert.equal(r.rows.find(r=>r.placement==='unmatched.com').revenue,null);
 });
-function fixture(){
- const db=new DatabaseSync(':memory:'),warehouse=createROIWarehouse(db),calls=[],state={fail:false};
+function fixture(type='DISPLAY'){
+ const db=new DatabaseSync(':memory:'),warehouse=createROIWarehouse(db),calls=[],state={fail:false,type};
  const catalog=async()=>({accounts:[{id:account,mcc:'',status:'ENABLED'}],networks:[network]});
- const google={search:async(id,q)=>{calls.push(q);if(q.includes('FROM customer'))return [{customer:{currencyCode:'BRL',timeZone:'America/Sao_Paulo'}}];if(q.includes('FROM group_placement_view'))return [{campaign:{id:campaign},segments:{date:day},groupPlacementView:{placement:'portal.com',placementType:'WEBSITE'},metrics:{costMicros:'10000000',clicks:'10',impressions:'100',averageCpc:'1000000',conversions:'2',interactions:'10',conversionsFromInteractionsRate:.2,costPerConversion:'5000000'}}];if(!q.includes('segments.date'))return [{campaign:{id:campaign,name:'Target only',advertisingChannelType:'DISPLAY'}}];return [{campaign:{id:campaign},segments:{date:day},metrics:{costMicros:'12000000',clicks:'10',impressions:'100'}}];}};
+ const google={search:async(id,q)=>{calls.push(q);if(q.includes('FROM customer'))return [{customer:{currencyCode:'BRL',timeZone:'America/Sao_Paulo'}}];if(q.includes('FROM group_placement_view'))return [{campaign:{id:campaign},segments:{date:day},groupPlacementView:{placement:'portal.com',placementType:'WEBSITE'},metrics:{costMicros:'10000000',clicks:'10',impressions:'100',averageCpc:'1000000',conversions:'2',interactions:'10',conversionsFromInteractionsRate:.2,costPerConversion:'5000000'}}];if(!q.includes('segments.date'))return [{campaign:{id:campaign,name:'Target only',advertisingChannelType:state.type}}];return [{campaign:{id:campaign},segments:{date:day},metrics:{costMicros:'12000000',clicks:'10',impressions:'100'}}];}};
  const admanager={keys:async()=>[{id:'5',name:'utm_content',reportableType:'ON'}],report:async()=>{calls.push('gam');if(state.fail)throw Error('private-secret');return {mode:'CUSTOM_CRITERIA',rows:[csv(),csv({'Dimension.CUSTOM_CRITERIA':'utm_content=12_secret.com','Column.AD_EXCHANGE_LINE_ITEM_LEVEL_REVENUE':'999000000'})],report_id:'1'};}};
  const service=createPlacements(db,{google,admanager,catalog,settings:()=>({networks:['9']}),warehouse,loadRates:async()=>({}),baseline:()=>({revenue:20})});
  return {db,warehouse,calls,service,state,google,admanager};
@@ -54,4 +54,18 @@ test('shared GAM cache is not exposed without Ads ownership and duplicate campai
  const f=fixture();try{await f.service.launch(scope);await done(f);assert.equal((await f.service.read({...scope,campaign:'12'},{reader:true})).rows.length,0);
  f.warehouse.saveSource('ads','1111111111',day,day,[{account:'1111111111',campaign,date:day,cost:1}]);const r=await f.service.read(scope,{reader:true});assert.ok(r.rows.every(row=>row.revenue===null&&row.profit===null));assert.ok(r.warnings.some(w=>w.includes('mais de uma conta')));
  }finally{f.service.stop();f.db.close();}
+});
+
+test('Demand Gen placements collect and reconcile with GAM while unsupported campaign types stay blocked',async()=>{
+ const f=fixture('DEMAND_GEN');try{
+  f.warehouse.saveSource('ads',account,day,day,[{account,campaign,campaign_type:'DEMAND_GEN',date:day,cost:12}]);
+  await f.service.launch(scope);await done(f);const report=await f.service.read(scope);
+  assert.equal(report.complete,true);assert.equal(report.rows[0].placement,'portal.com');assert.equal(report.rows[0].cost,10);assert.equal(report.rows[0].revenue,20);assert.equal(report.rows[0].profit,10);
+  assert.equal(JSON.parse(f.db.prepare("SELECT data FROM roi_placement_days WHERE kind='ads'").get().data).type,'DEMAND_GEN');
+  f.state.type='SEARCH';await f.service.launch(scope,{force:true});await done(f);const failed=await f.service.read(scope);assert.equal(failed.stale,true);assert.equal(failed.rows[0].profit,null);assert.ok(failed.sources.some(s=>s.error?.includes('Display e Geração de Demanda')));
+ }finally{f.service.stop();f.db.close();}
+ const unsupported=fixture('SEARCH');try{
+  unsupported.warehouse.saveSource('ads',account,day,day,[{account,campaign,campaign_type:'SEARCH',date:day,cost:12}]);
+  await assert.rejects(()=>unsupported.service.launch(scope),e=>e.status===400);assert.equal(unsupported.calls.length,0);
+ }finally{unsupported.service.stop();unsupported.db.close();}
 });
