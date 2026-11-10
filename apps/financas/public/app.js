@@ -1,10 +1,12 @@
 import {requireAccess,secureFetch} from '/access.js';
 import {initFixed} from './fixed.js';
 import {initCatalog,fillFinanceSelects} from './catalog.js';
+import {createExpenseFilters} from './filters.js';
 const $=id=>document.getElementById(id),form=$('expense-form'),month=$('month');
 const money=cents=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(cents/100);
 const localDate=()=>{const now=new Date();return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;};
-let editing=null,expenses=[],loadVersion=0,busy=false;
+let editing=null,expenses=[],loadVersion=0,busy=false,currentData=null;
+const filters=createExpenseFilters('monthly',renderRows);
 month.value=localDate().slice(0,7);form.elements.date.value=localDate();
 function message(text,error=false){$('message').textContent=text;$('message').classList.toggle('error',error);}
 async function api(path='',options={}){
@@ -14,27 +16,31 @@ async function api(path='',options={}){
 function reset(){editing=null;form.reset();form.elements.date.value=month.value===localDate().slice(0,7)?localDate():month.value+'-01';$('form-title').textContent='Nova despesa';$('save').textContent='Adicionar despesa';$('cancel').hidden=true;}
 function setBusy(value){busy=value;for(const element of form.elements)element.disabled=value;month.disabled=value;for(const button of $('expenses').querySelectorAll('button'))button.disabled=value;}
 function cell(row,value,className){const td=document.createElement('td');td.textContent=value;if(className)td.className=className;row.append(td);return td;}
-async function load(){
- const version=++loadVersion;
- $('total').textContent=$('paid').textContent=$('pending').textContent='—';$('categories').replaceChildren();$('expenses').replaceChildren();$('empty').hidden=true;$('count').textContent='Carregando…';
- try{
-  const data=await api('?month='+encodeURIComponent(month.value));if(version!==loadVersion)return;
-  expenses=data.expenses;
-  for(const key of ['total','paid','pending'])$(key).textContent=money(data.summary[key]);
-  fillFinanceSelects(data);
-  for(const [name,value] of Object.entries(data.summary.categories).sort((a,b)=>b[1]-a[1])){
+function renderRows(rows,filtered){
+  const summary={total:0,paid:0,pending:0,categories:Object.create(null)};
+  for(const row of rows){summary.total+=row.amount_cents;summary[row.status]+=row.amount_cents;summary.categories[row.category]=(Object.hasOwn(summary.categories,row.category)?summary.categories[row.category]:0)+row.amount_cents;}
+  for(const key of ['total','paid','pending'])$(key).textContent=money(summary[key]);
+  $('categories').replaceChildren();$('expenses').replaceChildren();
+  for(const [name,value] of Object.entries(summary.categories).sort((a,b)=>b[1]-a[1])){
    if(!value)continue;
    const row=document.createElement('div');row.className='category-row';const label=document.createElement('div');label.className='category-label';const title=document.createElement('span'),amount=document.createElement('strong');title.textContent=name;amount.textContent=money(value);label.append(title,amount);
-   const track=document.createElement('div'),fill=document.createElement('div');track.className='category-track';fill.className='category-fill';fill.style.width=(value/data.summary.total*100)+'%';track.append(fill);row.append(label,track);$('categories').append(row);
+   const track=document.createElement('div'),fill=document.createElement('div');track.className='category-track';fill.className='category-fill';fill.style.width=(value/summary.total*100)+'%';track.append(fill);row.append(label,track);$('categories').append(row);
   }
-  if(!expenses.length)$('categories').textContent='Suas categorias aparecerão aqui quando você adicionar despesas.';
-  $('count').textContent=`${expenses.length} ${expenses.length===1?'lançamento':'lançamentos'}`;$('empty').hidden=expenses.length>0;
-  for(const expense of expenses){
-   const row=document.createElement('tr');cell(row,expense.date.split('-').reverse().join('/'));cell(row,expense.description);cell(row,expense.category);cell(row,data.groups.find(g=>g.id===expense.area)?.name||expense.area);
+  if(!rows.length)$('categories').textContent='Nenhuma despesa para esta seleção.';
+  $('count').textContent=`${rows.length} de ${expenses.length} lançamentos`;$('empty').hidden=rows.length>0;$('empty').textContent=filtered?'Nenhuma despesa corresponde aos filtros selecionados.':'Nenhuma despesa neste mês. Comece adicionando uma despesa da casa.';
+  for(const expense of rows){
+   const row=document.createElement('tr');cell(row,expense.date.split('-').reverse().join('/'));cell(row,expense.description);cell(row,expense.category);cell(row,currentData.groups.find(g=>g.id===expense.area)?.name||expense.area);
    const badge=document.createElement('span');badge.className='status '+expense.status;badge.textContent=expense.status==='paid'?'Pago':'Pendente';const status=document.createElement('td');status.append(badge);row.append(status);cell(row,money(expense.amount_cents),'number');
    const actions=document.createElement('td');
    for(const [name,handler] of [['Editar',()=>edit(expense)],['Excluir',()=>remove(expense)]]){const button=document.createElement('button');button.type='button';button.textContent=name;button.setAttribute('aria-label',`${name}: ${expense.description}`);button.disabled=busy;button.onclick=handler;actions.append(button);}row.append(actions);$('expenses').append(row);
   }
+}
+async function load(){
+ const version=++loadVersion;
+ $('monthly-filters').hidden=true;$('total').textContent=$('paid').textContent=$('pending').textContent='—';$('categories').replaceChildren();$('expenses').replaceChildren();$('empty').hidden=true;$('count').textContent='Carregando…';
+ try{
+  const data=await api('?month='+encodeURIComponent(month.value));if(version!==loadVersion)return;
+  currentData=data;expenses=data.expenses;fillFinanceSelects(data);filters.update(data,expenses);$('monthly-filters').hidden=false;
  }catch(error){if(version!==loadVersion)return;$('count').textContent='Dados indisponíveis';message(error.message,true);}
 }
 function edit(expense){if(busy)return;editing=expense;for(const name of ['description','date','category','status','area'])form.elements[name].value=expense[name];form.elements.amount.value=(expense.amount_cents/100).toFixed(2).replace('.',',');$('form-title').textContent='Editar despesa';$('save').textContent='Salvar alterações';$('cancel').hidden=false;form.elements.description.focus();form.scrollIntoView({behavior:'smooth',block:'center'});}
