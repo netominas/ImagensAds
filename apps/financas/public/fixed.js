@@ -1,16 +1,16 @@
 import {secureFetch} from '/access.js';
 import {fillFinanceSelects} from './catalog.js';
 import {createExpenseFilters} from './filters.js';
+import {showExpenseEditor,showFinanceView} from './navigation.js';
 export async function initFixed(){
  const $=id=>document.getElementById(id),form=$('fixed-form'),money=c=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(c/100);
  let editing=null,busy=false,currentData=null;
  const filters=createExpenseFilters('fixed',renderRows);
  const message=(text,error=false)=>{$('message').textContent=text;$('message').classList.toggle('error',error);};
- for(const mode of ['fixed','monthly','catalog'])$('show-'+mode).onclick=()=>{for(const view of ['fixed','monthly','catalog']){$(view+'-view').hidden=view!==mode;$('show-'+view).setAttribute('aria-pressed',String(view===mode));}$('monthly-filter').hidden=mode!=='monthly';message('');};
  async function api(path='',options={}){const response=await secureFetch('/apps/financas/api/fixed'+path,{cache:'no-store',...options,headers:{'Content-Type':'application/json'}});const data=await response.json();if(!response.ok)throw Error(data.error||'Não foi possível concluir.');return data;}
  function setBusy(value){busy=value;for(const element of form.elements)element.disabled=value;for(const button of $('fixed-items').querySelectorAll('button'))button.disabled=value;}
  function reset(){editing=null;form.reset();$('fixed-title').textContent='Nova despesa fixa';$('fixed-save').textContent='Adicionar despesa fixa';$('fixed-cancel').hidden=true;}
- function edit(item){if(busy)return;editing=item;for(const name of ['description','category','area'])form.elements[name].value=item[name];form.elements.amount.value=(item.amount_cents/100).toFixed(2).replace('.',',');$('fixed-title').textContent='Editar despesa fixa';$('fixed-save').textContent='Salvar alterações';$('fixed-cancel').hidden=false;form.elements.description.focus();form.scrollIntoView({block:'center',behavior:'smooth'});}
+ function edit(item){if(busy)return;editing=item;for(const name of ['description','category','area'])form.elements[name].value=item[name];form.elements.amount.value=(item.amount_cents/100).toFixed(2).replace('.',',');$('fixed-title').textContent='Editar despesa fixa';$('fixed-save').textContent='Salvar alterações';$('fixed-cancel').hidden=false;showExpenseEditor('fixed',true);form.elements.description.focus();form.scrollIntoView({block:'center',behavior:'smooth'});}
  async function remove(item){if(busy||!confirm(`Excluir a despesa fixa “${item.description}”?`))return;setBusy(true);try{await api('/'+item.id,{method:'DELETE',body:JSON.stringify({revision:item.revision})});if(editing?.id===item.id)reset();message('Despesa fixa excluída.');await load();}catch(e){message(e.message,true);}finally{setBusy(false);}}
  function renderRows(items,filtered){
   $('fixed-selected-total').textContent=money(items.reduce((sum,item)=>sum+item.amount_cents,0));$('fixed-selected-count').textContent=String(items.length);
@@ -31,7 +31,7 @@ export async function initFixed(){
  form.onsubmit=async event=>{
   event.preventDefault();if(busy)return;const value=form.elements.amount.value.trim();if(!/^\d{1,7}([,.]\d{1,2})?$/.test(value)){message('Informe um valor como 1234,56, sem separador de milhar.',true);return;}
   const [whole,fraction='']=value.replace(',','.').split('.');const body={amount_cents:Number(whole)*100+Number(fraction.padEnd(2,'0')),...Object.fromEntries(['description','category','area'].map(n=>[n,form.elements[n].value])),...(editing?{revision:editing.revision}:{})};
-  setBusy(true);try{await api(editing?'/'+editing.id:'',{method:editing?'PUT':'POST',body:JSON.stringify(body)});reset();message('Despesa fixa salva.');await load();}catch(e){message(e.message,true);}finally{setBusy(false);}
+  setBusy(true);try{await api(editing?'/'+editing.id:'',{method:editing?'PUT':'POST',body:JSON.stringify(body)});reset();showFinanceView('fixed');message('Despesa fixa salva.');await load();}catch(e){message(e.message,true);}finally{setBusy(false);}
  };
- $('fixed-cancel').onclick=reset;window.addEventListener('finance-catalog-changed',()=>{void load();});await load();
+ $('fixed-cancel').onclick=()=>{reset();showFinanceView('fixed');};window.addEventListener('finance-new-expense',reset);window.addEventListener('finance-catalog-changed',()=>{void load();});await load();
 }

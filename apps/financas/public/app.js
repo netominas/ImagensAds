@@ -2,6 +2,7 @@ import {requireAccess,secureFetch} from '/access.js';
 import {initFixed} from './fixed.js';
 import {initCatalog,fillFinanceSelects} from './catalog.js';
 import {createExpenseFilters} from './filters.js';
+import {initNavigation,showExpenseEditor,showFinanceView} from './navigation.js';
 const $=id=>document.getElementById(id),form=$('expense-form'),month=$('month');
 const money=cents=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(cents/100);
 const localDate=()=>{const now=new Date();return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;};
@@ -43,7 +44,7 @@ async function load(){
   currentData=data;expenses=data.expenses;fillFinanceSelects(data);filters.update(data,expenses);$('monthly-filters').hidden=false;
  }catch(error){if(version!==loadVersion)return;$('count').textContent='Dados indisponíveis';message(error.message,true);}
 }
-function edit(expense){if(busy)return;editing=expense;for(const name of ['description','date','category','status','area'])form.elements[name].value=expense[name];form.elements.amount.value=(expense.amount_cents/100).toFixed(2).replace('.',',');$('form-title').textContent='Editar despesa';$('save').textContent='Salvar alterações';$('cancel').hidden=false;form.elements.description.focus();form.scrollIntoView({behavior:'smooth',block:'center'});}
+function edit(expense){if(busy)return;editing=expense;for(const name of ['description','date','category','status','area'])form.elements[name].value=expense[name];form.elements.amount.value=(expense.amount_cents/100).toFixed(2).replace('.',',');$('form-title').textContent='Editar despesa';$('save').textContent='Salvar alterações';$('cancel').hidden=false;showExpenseEditor('monthly',true);form.elements.description.focus();form.scrollIntoView({behavior:'smooth',block:'center'});}
 async function remove(expense){
  if(busy||!confirm(`Excluir a despesa “${expense.description}” de ${money(expense.amount_cents)}?`))return;
  setBusy(true);try{await api('/'+expense.id,{method:'DELETE',body:JSON.stringify({revision:expense.revision})});if(editing?.id===expense.id)reset();message('Despesa excluída.');await load();}catch(error){message(error.message,true);}finally{setBusy(false);}
@@ -55,12 +56,13 @@ form.onsubmit=async event=>{
  const [whole,fraction='']=amount.replace(',','.').split('.'),amount_cents=Number(whole)*100+Number(fraction.padEnd(2,'0'));
  const body={amount_cents,...Object.fromEntries(['description','date','category','status','area'].map(name=>[name,form.elements[name].value])),...(editing?{revision:editing.revision}:{})};
  setBusy(true);
- try{await api(editing?'/'+editing.id:'',{method:editing?'PUT':'POST',body:JSON.stringify(body)});month.value=body.date.slice(0,7);reset();message('Despesa salva.');await load();}catch(error){message(error.message,true);}finally{setBusy(false);}
+ try{await api(editing?'/'+editing.id:'',{method:editing?'PUT':'POST',body:JSON.stringify(body)});month.value=body.date.slice(0,7);reset();showFinanceView('monthly');message('Despesa salva.');await load();}catch(error){message(error.message,true);}finally{setBusy(false);}
 };
-$('cancel').onclick=()=>reset();month.onchange=()=>{if(!month.checkValidity()||!month.value){message('Selecione um mês válido.',true);return;}reset();message('');void load();};
+$('cancel').onclick=()=>{reset();showFinanceView('monthly');};month.onchange=()=>{if(!month.checkValidity()||!month.value){message('Selecione um mês válido.',true);return;}reset();message('');void load();};
 $('logout').onclick=async()=>{try{const response=await secureFetch('/api/logout',{method:'POST'});if(!response.ok)throw Error('Não foi possível sair.');localStorage.setItem('adstudio-logout',String(Date.now()));location.replace('/login');}catch(error){message(error.message,true);}};
 window.addEventListener('storage',event=>{if(event.key==='adstudio-logout')location.replace('/login');});
 window.addEventListener('pageshow',event=>{if(event.persisted)location.reload();});
 window.addEventListener('focus',()=>{void requireAccess();});
 window.addEventListener('finance-catalog-changed',()=>{void load();});
-if(await requireAccess()){await initCatalog();await initFixed();await load();}
+window.addEventListener('finance-new-expense',reset);
+if(await requireAccess()){initNavigation();await initCatalog();await initFixed();await load();}
