@@ -11,3 +11,19 @@ export function reportPeriod(url,now=new Date()){
  const detail=Boolean(params.get('account')&&params.get('campaign'));
  return {start:detail?week:today,end:today,preset:detail?'7':'today'};
 }
+
+// Placement dates are independent from the parent campaign report.
+export function placementPeriod(preset,now=new Date()){
+ const current=reportPeriod(new URL('https://roi.local/?account=1&campaign=1'),now);
+ if(preset==='7')return {start:current.start,end:current.end};
+ if(preset==='today')return {start:current.end,end:current.end};
+ if(preset==='yesterday'){const day=new Date(current.end+'T12:00:00Z');day.setUTCDate(day.getUTCDate()-1);const yesterday=day.toISOString().slice(0,10);return {start:yesterday,end:yesterday};}
+ throw new Error('Período de placements inválido.');
+}
+export function validatePlacementPeriod(start,end,now=new Date()){
+ for(const date of [start,end])if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date))||new Date(date).toISOString().slice(0,10)!==date)throw new Error('Informe datas válidas para os placements.');
+ if(start>end)throw new Error('A data inicial deve ser anterior ou igual à data final.');
+ if(end>placementPeriod('today',now).end)throw new Error('A data final não pode estar no futuro.');
+ if((Date.parse(end)-Date.parse(start))/86400000>92)throw new Error('Use um período de até 93 dias.');
+ return {start,end};
+}
