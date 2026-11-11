@@ -38,6 +38,15 @@ test('users persist, isolate ROI including totals and exports, revoke sessions a
   assert.equal((await request('/usuarios')).status,303);assert.equal((await request('/api/users')).status,401);
   assert.equal((await signIn(env.ADMIN_EMAIL,'admin-users-test-password')).status,200);const adminCookie=cookie;
   assert.equal((await request('/usuarios')).status,200);
+  const financeInput={name:'Finance viewer',email:'finance@example.test',password:'finance-users-test-password',active:true,grants:[],role:'finance-reader'};
+  const financeCreated=await request('/api/users',financeInput);assert.equal(financeCreated.status,200);
+  const financeLogin=await signIn(financeInput.email,financeInput.password);
+  assert.equal((await financeLogin.json()).home,'/apps/financas/');
+  assert.equal((await (await request('/api/session')).json()).role,'finance-reader');
+  for(const path of ['/apps/financas/','/apps/financas/app.js','/dashboard.css','/apps/financas/api/fixed','/apps/financas/api/expenses?month=2026-11'])assert.equal((await request(path)).status,200,path);
+  for(const path of ['/apps/roi/','/apps/roi/api/catalog','/usuarios','/api/users','/apps/criativos/','/apps/financas/api/catalog'])assert.equal((await request(path)).status,403,path);
+  for(const method of ['POST','PUT','DELETE'])for(const path of ['/apps/financas/api/fixed','/apps/financas/api/expenses','/apps/financas/api/categories','/apps/financas/api/groups'])assert.equal((await request(path,{},method)).status,403,method+' '+path);
+  cookie=adminCookie;
   const input={name:'Leitor',email:'reader@example.test',password:'reader-users-test-password',active:true,grants:[{account,campaigns:['11','12']}]};
   assert.equal((await request('/api/users',input,'POST','https://evil.example')).status,403);
   const created=await request('/api/users',input);assert.equal(created.status,200);user=(await created.json()).user;assert.equal(user.password_hash,undefined);assert.equal(user.password,undefined);
@@ -66,7 +75,7 @@ test('users persist, isolate ROI including totals and exports, revoke sessions a
   const activeCookie=cookie;cookie=adminCookie;const blocked=await request('/api/users',{...input,id:user.id,revision:user.revision,password:'',active:false,grants:user.grants});assert.equal(blocked.status,200);
   assert.equal((await request('/api/users',{...input,id:user.id,revision:user.revision,password:''})).status,409);
   cookie=activeCookie;assert.equal((await request('/apps/roi/api/report?start='+date+'&end='+date)).status,401);assert.equal((await signIn(input.email,'reader-replacement-password')).status,401);
-  assert.equal(storage.db.prepare('SELECT count(*) n FROM workspace_user_audit').get().n,4);
+  assert.equal(storage.db.prepare('SELECT count(*) n FROM workspace_user_audit WHERE user_id=?').get(user.id).n,4);
  }finally{server.closeAllConnections();await new Promise(r=>server.close(r));storage.close();}
  try{const reopened=openStorage(dir,'8'.repeat(64));assert.equal(reopened.db.prepare('SELECT active FROM workspace_users WHERE id=?').get(user.id).active,0);reopened.close();}finally{assert.ok(resolve(dir).startsWith(resolve(tmpdir())+sep));await rm(dir,{recursive:true,force:true});}
 });

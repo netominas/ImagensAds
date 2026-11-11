@@ -3,7 +3,7 @@ import {fillFinanceSelects} from './catalog.js';
 import {createExpenseFilters} from './filters.js';
 import {showExpenseEditor,showFinanceView} from './navigation.js';
 import {applyClassificationColor,categoryId,colorExpenseRow} from './colors.js';
-export async function initFixed(){
+export async function initFixed(readOnly=false){
  const $=id=>document.getElementById(id),form=$('fixed-form'),money=c=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(c/100);
  let editing=null,busy=false,currentData=null;
  const filters=createExpenseFilters('fixed',renderRows);
@@ -16,7 +16,7 @@ export async function initFixed(){
  function renderRows(items,filtered){
   $('fixed-selected-total').textContent=money(items.reduce((sum,item)=>sum+item.amount_cents,0));$('fixed-selected-count').textContent=String(items.length);
   $('fixed-items').replaceChildren();$('fixed-count').textContent=`${items.length} de ${currentData.items.length} despesas`;$('fixed-empty').hidden=items.length>0;$('fixed-empty').textContent=filtered?'Nenhuma despesa corresponde aos filtros selecionados.':'Nenhuma despesa fixa cadastrada.';
-  for(const item of items){const row=document.createElement('tr');for(const value of [item.description,item.category,currentData.groups.find(g=>g.id===item.area)?.name||item.area,money(item.amount_cents)]){const td=document.createElement('td');td.textContent=value;row.append(td);}row.children[3].className='number';colorExpenseRow(row,item,currentData,1,2);const actions=document.createElement('td');for(const [label,handler] of [['Editar',()=>edit(item)],['Excluir',()=>remove(item)]]){const button=document.createElement('button');button.type='button';button.textContent=label;button.setAttribute('aria-label',label+': '+item.description);button.onclick=handler;button.disabled=busy;actions.append(button);}row.append(actions);$('fixed-items').append(row);}
+  for(const item of items){const row=document.createElement('tr');for(const value of [item.description,item.category,currentData.groups.find(g=>g.id===item.area)?.name||item.area,money(item.amount_cents)]){const td=document.createElement('td');td.textContent=value;row.append(td);}row.children[3].className='number';colorExpenseRow(row,item,currentData,1,2);if(readOnly){$('fixed-items').append(row);continue;}const actions=document.createElement('td');for(const [label,handler] of [['Editar',()=>edit(item)],['Excluir',()=>remove(item)]]){const button=document.createElement('button');button.type='button';button.textContent=label;button.setAttribute('aria-label',label+': '+item.description);button.onclick=handler;button.disabled=busy;actions.append(button);}row.append(actions);$('fixed-items').append(row);}
  }
  async function load(){
   $('fixed-filters').hidden=true;
@@ -30,7 +30,7 @@ export async function initFixed(){
   }catch(e){for(const id of ['fixed-total','fixed-selected-total','fixed-selected-count'])$(id).textContent='—';$('fixed-items').replaceChildren();$('fixed-count').textContent='Dados indisponíveis';message(e.message,true);}
  }
  form.onsubmit=async event=>{
-  event.preventDefault();if(busy)return;const value=form.elements.amount.value.trim();if(!/^\d{1,7}([,.]\d{1,2})?$/.test(value)){message('Informe um valor como 1234,56, sem separador de milhar.',true);return;}
+  event.preventDefault();if(busy||readOnly)return;const value=form.elements.amount.value.trim();if(!/^\d{1,7}([,.]\d{1,2})?$/.test(value)){message('Informe um valor como 1234,56, sem separador de milhar.',true);return;}
   const [whole,fraction='']=value.replace(',','.').split('.');const body={amount_cents:Number(whole)*100+Number(fraction.padEnd(2,'0')),...Object.fromEntries(['description','category','area'].map(n=>[n,form.elements[n].value])),...(editing?{revision:editing.revision}:{})};
   setBusy(true);try{await api(editing?'/'+editing.id:'',{method:editing?'PUT':'POST',body:JSON.stringify(body)});reset();showFinanceView('fixed');message('Despesa fixa salva.');await load();}catch(e){message(e.message,true);}finally{setBusy(false);}
  };

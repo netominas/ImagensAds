@@ -1,4 +1,5 @@
 const views=['fixed','monthly','expense','catalog'];
+let readOnly=false;
 const headings={
  fixed:['Finanças',''],
  monthly:['Lançamentos do mês','Confira os pagamentos e as despesas do período selecionado.'],
@@ -7,7 +8,7 @@ const headings={
 };
 function closeMenu(){document.getElementById('finance-sidebar').classList.remove('is-open');document.getElementById('menu-toggle').setAttribute('aria-expanded','false');}
 export function showFinanceView(view){
- if(!views.includes(view))return;
+ if(!views.includes(view)||(readOnly&&['expense','catalog'].includes(view)))return;
  for(const name of views){document.getElementById(name+'-view').hidden=name!==view;const button=document.getElementById('show-'+name);if(name===view)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');}
  document.getElementById('monthly-filter').hidden=view!=='monthly';
  document.getElementById('page-heading').hidden=view==='fixed';
@@ -19,7 +20,9 @@ function selectEditor(type){document.getElementById('expense-type').value=type;f
 export function showExpenseEditor(type,editing=false){
  showFinanceView('expense');selectEditor(type);if(editing)document.getElementById('page-title').textContent='Editar despesa';
 }
-export function initNavigation(){
+export function initNavigation(viewOnly=false){
+ readOnly=viewOnly;
+ document.documentElement.toggleAttribute('data-finance-read-only',readOnly);
  for(const name of views)document.getElementById('show-'+name).onclick=()=>{
   if(name==='expense'){window.dispatchEvent(new Event('finance-new-expense'));showExpenseEditor(document.getElementById('expense-type').value);}
   else showFinanceView(name);

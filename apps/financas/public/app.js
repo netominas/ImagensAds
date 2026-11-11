@@ -8,6 +8,7 @@ const $=id=>document.getElementById(id),form=$('expense-form'),month=$('month');
 const money=cents=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(cents/100);
 const localDate=()=>{const now=new Date();return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;};
 let editing=null,expenses=[],loadVersion=0,busy=false,currentData=null;
+let readOnly=false;
 const filters=createExpenseFilters('monthly',renderRows);
 month.value=localDate().slice(0,7);form.elements.date.value=localDate();
 function message(text,error=false){$('message').textContent=text;$('message').classList.toggle('error',error);}
@@ -34,6 +35,7 @@ function renderRows(rows,filtered){
    const row=document.createElement('tr');cell(row,expense.date.split('-').reverse().join('/'));cell(row,expense.description);cell(row,expense.category);cell(row,currentData.groups.find(g=>g.id===expense.area)?.name||expense.area);
    colorExpenseRow(row,expense,currentData,2,3);
    const badge=document.createElement('span');badge.className='status '+expense.status;badge.textContent=expense.status==='paid'?'Pago':'Pendente';const status=document.createElement('td');status.append(badge);row.append(status);cell(row,money(expense.amount_cents),'number');
+   if(readOnly){$('expenses').append(row);continue;}
    const actions=document.createElement('td');
    for(const [name,handler] of [['Editar',()=>edit(expense)],['Excluir',()=>remove(expense)]]){const button=document.createElement('button');button.type='button';button.textContent=name;button.setAttribute('aria-label',`${name}: ${expense.description}`);button.disabled=busy;button.onclick=handler;actions.append(button);}row.append(actions);$('expenses').append(row);
   }
@@ -52,7 +54,7 @@ async function remove(expense){
  setBusy(true);try{await api('/'+expense.id,{method:'DELETE',body:JSON.stringify({revision:expense.revision})});if(editing?.id===expense.id)reset();message('Despesa excluída.');await load();}catch(error){message(error.message,true);}finally{setBusy(false);}
 }
 form.onsubmit=async event=>{
- event.preventDefault();if(busy)return;
+ event.preventDefault();if(busy||readOnly)return;
  const amount=form.elements.amount.value.trim();
  if(!/^\d{1,7}([,.]\d{1,2})?$/.test(amount)){message('Informe o valor sem separador de milhar, por exemplo 1234,56.',true);return;}
  const [whole,fraction='']=amount.replace(',','.').split('.'),amount_cents=Number(whole)*100+Number(fraction.padEnd(2,'0'));
@@ -67,4 +69,11 @@ window.addEventListener('pageshow',event=>{if(event.persisted)location.reload();
 window.addEventListener('focus',()=>{void requireAccess();});
 window.addEventListener('finance-catalog-changed',()=>{void load();});
 window.addEventListener('finance-new-expense',reset);
-if(await requireAccess()){initNavigation();await initCatalog();await initFixed();await load();}
+const session=await requireAccess();
+if(session){
+ readOnly=session.role==='finance-reader';
+ initNavigation(readOnly);
+ if(!readOnly)await initCatalog();
+ await initFixed(readOnly);
+ await load();
+}

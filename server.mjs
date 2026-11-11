@@ -24,6 +24,9 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
   let activeJobs=0;
   const allowed=new Set(['index.html','login.js','login.css','access.js','activate.html','activate.js','favicon.svg','dashboard.js','dashboard.css','users.js','users.css']);
   const creativeAssets=new Set(['app.js','core.js','styles.css','copy.js','copy-core.js','copy.css']);
+  const financeAssets=new Set(['app.js','fixed.js','catalog.js','filters.js','navigation.js','colors.js','style.css']);
+  const financeReadPaths=new Set(['/apps/financas/api/fixed','/apps/financas/api/expenses']);
+  const publicReader=new Set(['/login','/index.html','/login.js','/login.css','/access.js','/favicon.svg','/api/session','/api/logout','/api/login','/.netlify/functions/login','/.netlify/functions/logout','/.netlify/functions/session']);
   const googleAssets=new Set(['app.js','creator.js','style.css','creator.css','session.js']);
   const server=createServer(async(req,res)=>{
     const send=response=>{
@@ -37,9 +40,16 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       const originalPath=url.pathname;
       const redirect=location=>new Response(null,{status:303,headers:{Location:location,'Cache-Control':'no-store'}});
       const session=await getSession(new Request(url,{headers:req.headers}),authStore,env);
+      const financeReader=session?.role==='finance-reader';
+      if(financeReader){
+        if(['/','/dashboard'].includes(originalPath))return send(redirect('/apps/financas/'));
+        const financePage=['/apps/financas','/apps/financas/'].includes(originalPath);
+        const financeAsset=originalPath.startsWith('/apps/financas/')&&financeAssets.has(originalPath.slice('/apps/financas/'.length));
+        const canRead=['GET','HEAD'].includes(req.method)&&(financePage||financeAsset||originalPath==='/dashboard.css');
+        if(!publicReader.has(originalPath)&&!canRead&&!(req.method==='GET'&&financeReadPaths.has(originalPath)))return send(authJSON({error:'Acesso somente para visualização do Finanças.'},403));
+      }
       if(session?.role==='reader'){
         if(['/', '/dashboard'].includes(originalPath))return send(redirect('/apps/roi/'));
-        const publicReader=new Set(['/login','/index.html','/login.js','/login.css','/access.js','/favicon.svg','/api/session','/api/logout','/api/login','/.netlify/functions/login','/.netlify/functions/logout','/.netlify/functions/session']);
         const roiPage=['/apps/roi','/apps/roi/','/apps/roi/sites'].includes(originalPath);
         const roiFile=originalPath.startsWith('/apps/roi/')&&!originalPath.startsWith('/apps/roi/private/')&&!originalPath.startsWith('/apps/roi/api/');
         if(!publicReader.has(originalPath)&&!roiPage&&!roiFile&&!originalPath.startsWith('/apps/roi/api/'))return send(authJSON({error:'Acesso não permitido.'},403));
@@ -48,7 +58,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       }
       if(['/apps/financas','/apps/financas/'].includes(originalPath)){
         if(!session)return send(redirect('/login'));
-        if(session.role!=='admin')return send(authJSON({error:'Acesso exclusivo do administrador.'},403));
+        if(session.role!=='admin'&&!financeReader)return send(authJSON({error:'Acesso não permitido.'},403));
         if(!['GET','HEAD'].includes(req.method))return send(authJSON({error:'Método não permitido.'},405));
         if(originalPath==='/apps/financas')return send(redirect('/apps/financas/'));
         return send(new Response(await readFile(new URL('./apps/financas/private/index.html',import.meta.url)),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store','Vary':'Cookie'}}));
@@ -56,7 +66,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       const isFinance=originalPath.startsWith('/apps/financas/api/');
       if(isFinance){
         const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);if(denied)return send(denied);
-        if(session?.role!=='admin')return send(authJSON({error:'Acesso exclusivo do administrador.'},403));
+        if(session?.role!=='admin'&&!(financeReader&&req.method==='GET'&&financeReadPaths.has(originalPath)))return send(authJSON({error:'Acesso não permitido.'},403));
         if(!financeAPI)return send(authJSON({error:'Persistência indisponível.'},503));
       }
       if(originalPath==='/usuarios'){
@@ -159,7 +169,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       }
       if(originalPath.startsWith('/apps/financas/')){
         const asset=originalPath.slice('/apps/financas/'.length);
-        if(!new Set(['app.js','fixed.js','catalog.js','filters.js','navigation.js','colors.js','style.css']).has(asset))return send(authJSON({error:'Não encontrado.'},404));
+        if(!financeAssets.has(asset))return send(authJSON({error:'Não encontrado.'},404));
         return send(new Response(await readFile(new URL('./apps/financas/public/'+asset,import.meta.url)),{headers:{'Content-Type':asset.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8','Cache-Control':'no-store'}}));
       }
       if(originalPath.startsWith('/apps/roi/')){

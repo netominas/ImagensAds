@@ -7,7 +7,7 @@ function message(text,error=false){$('message').textContent=text;$('message').cl
 function lock(value){busy=value;document.querySelectorAll('button,input,select').forEach(e=>e.disabled=value);}
 const accountName=id=>accounts.find(a=>a.id===id)?.name||id;
 function renderUsers(){
- $('users-list').innerHTML=users.length?users.map(u=>`<tr><td><strong>${esc(u.name)}</strong><small>${esc(u.email)}</small></td><td>${u.grants.length?u.grants.map(g=>`${esc(accountName(g.account))} · ${g.campaigns===null?'conta inteira':g.campaigns.length+' campanha(s)'}`).join('<br>'):'Sem permissões'}</td><td>${u.active?'Ativo':'Bloqueado'}</td><td><button class="secondary" data-edit-user="${u.id}">Editar acesso</button></td></tr>`).join(''):'<tr><td colspan="4">Nenhum usuário adicional cadastrado.</td></tr>';
+ $('users-list').innerHTML=users.length?users.map(u=>`<tr><td><strong>${esc(u.name)}</strong><small>${esc(u.email)}</small></td><td>${u.role==='finance-reader'?'Finanças · visualização':u.grants.length?u.grants.map(g=>`${esc(accountName(g.account))} · ${g.campaigns===null?'conta inteira':g.campaigns.length+' campanha(s)'}`).join('<br>'):'Sem permissões'}</td><td>${u.active?'Ativo':'Bloqueado'}</td><td><button class="secondary" data-edit-user="${u.id}">Editar acesso</button></td></tr>`).join(''):'<tr><td colspan="4">Nenhum usuário adicional cadastrado.</td></tr>';
  $('users-list').querySelectorAll('[data-edit-user]').forEach(b=>b.onclick=()=>edit(users.find(u=>u.id===b.dataset.editUser)));
 }
 function renderGrants(){
@@ -26,8 +26,9 @@ async function loadCampaigns(selected=[]){
  }catch(e){if(token===campaignToken){$('campaign-message').textContent=e.message+' Você pode informar os IDs abaixo.';$('grant-extra').value=selected.join(', ');}}
 }
 function edit(user=null){
- ++campaignToken;editing=user;grants=structuredClone(user?.grants||[]);$('user-form').reset();$('user-name').value=user?.name||'';$('user-email').value=user?.email||'';$('user-password').value='';$('user-password').required=!user;$('password-help').textContent=user?'deixe em branco para manter a senha atual':'inicial · mínimo de 14 caracteres';$('user-active').checked=user?user.active:true;$('editor-title').textContent=user?'Editar usuário':'Novo usuário';$('editor').hidden=false;$('campaign-picker').hidden=true;$('campaign-message').textContent='';renderGrants();message('');$('user-name').focus();
+ ++campaignToken;editing=user;grants=structuredClone(user?.grants||[]);$('user-form').reset();$('user-role').value=user?.role||'reader';$('roi-permissions').hidden=$('user-role').value!=='reader';$('user-name').value=user?.name||'';$('user-email').value=user?.email||'';$('user-password').value='';$('user-password').required=!user;$('password-help').textContent=user?'deixe em branco para manter a senha atual':'inicial · mínimo de 14 caracteres';$('user-active').checked=user?user.active:true;$('editor-title').textContent=user?'Editar usuário':'Novo usuário';$('editor').hidden=false;$('campaign-picker').hidden=true;$('campaign-message').textContent='';renderGrants();message('');$('user-name').focus();
 }
+$('user-role').onchange=()=>{$('roi-permissions').hidden=$('user-role').value!=='reader';};
 $('new-user').onclick=()=>edit();$('cancel-user').onclick=()=>{++campaignToken;$('editor').hidden=true;$('user-password').value='';editing=null;};
 $('grant-account').onchange=()=>void loadCampaigns();$('grant-scope').onchange=()=>void loadCampaigns();
 $('add-grant').onclick=()=>{const account=$('grant-account').value;if(!account){message('Selecione uma conta.',true);return;}
@@ -36,7 +37,7 @@ $('add-grant').onclick=()=>{const account=$('grant-account').value;if(!account){
  grants=grants.filter(g=>g.account!==account);grants.push({account,campaigns});renderGrants();message('Permissão preparada. Clique em Salvar usuário para aplicar.');
 };
 $('user-form').onsubmit=async event=>{event.preventDefault();if(busy)return;lock(true);message('Salvando acesso…');
- try{const data=await api('',{...(editing?{id:editing.id,revision:editing.revision}:{}),name:$('user-name').value,email:$('user-email').value,password:$('user-password').value,active:$('user-active').checked,grants});users=data.users;renderUsers();$('editor').hidden=true;$('user-password').value='';message('Usuário salvo. O acesso anterior foi encerrado; ele poderá entrar com as permissões atualizadas.');}
+ try{const data=await api('',{...(editing?{id:editing.id,revision:editing.revision}:{}),name:$('user-name').value,email:$('user-email').value,password:$('user-password').value,active:$('user-active').checked,role:$('user-role').value,grants:$('user-role').value==='reader'?grants:[]});users=data.users;renderUsers();$('editor').hidden=true;$('user-password').value='';message('Usuário salvo. O acesso anterior foi encerrado; ele poderá entrar com as permissões atualizadas.');}
  catch(e){message(e.message,true);}finally{lock(false);}
 };
-try{const [u,c]=await Promise.all([api(''),api('/catalog')]);users=u.users;accounts=c.accounts;for(const a of accounts)$('grant-account').add(new Option(a.name+' · '+a.id,a.id));renderUsers();}catch(e){message(e.message,true);}
+try{const u=await api('');users=u.users;renderUsers();const c=await api('/catalog');accounts=c.accounts;for(const a of accounts)$('grant-account').add(new Option(a.name+' · '+a.id,a.id));renderUsers();}catch(e){message(e.message,true);}
