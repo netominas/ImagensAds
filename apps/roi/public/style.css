@@ -116,3 +116,13 @@ body.sidebar-hidden{grid-template-columns:minmax(0,1fr)}.sidebar-toggle{display:
 #report-panel table.report-columns-compact { min-width: var(--report-table-min); table-layout: auto; }
 #report-panel table.report-columns-compact :is(th, td) { width: auto; }
 #report-panel :is(th, td)[hidden], .report-sticky-header th[hidden] { display: none !important; }
+
+.report-notices {
+ margin-top: 18px;
+ border: 1px solid var(--line);
+ border-radius: 7px;
+ background: #fff;
+}
+.report-notices summary { padding: 13px 17px; cursor: pointer; font-size: 13px; font-weight: 550; color: #526f89; }
+.report-notices summary::marker { color: #6c92b7; }
+.report-notices .notice { margin: 0 16px 14px; }
