@@ -112,6 +112,84 @@ function dailyChangeIcon(date){
  if(dayChanges.account!==state.account||dayChanges.campaign!==state.campaign||!changesOnDate(dayChanges.items,date).length)return '';
  return `<button type="button" class="campaign-info-button daily-change-button" data-recent-account="${esc(state.account)}" data-recent-campaign="${esc(state.campaign)}" data-recent-date="${esc(date)}" data-recent-name="${esc($('campaign-detail-name').textContent)}" aria-label="Alterações em ${esc(date.split('-').reverse().join('/'))}" aria-haspopup="dialog" aria-expanded="false" aria-controls="recent-changes-card"><span aria-hidden="true">i</span></button>`;
 }
+const columnPreferences = new Map();
+const columnStorageKey = view => 'roi-hidden-columns-' + view;
+const columnMenu = $('report-columns');
+const columnOptions = $('report-column-options');
+let columnView = '';
+let columnSchema = '';
+
+function hiddenReportColumns(view) {
+ if (!columnPreferences.has(view)) {
+  let saved;
+  try { saved = JSON.parse(localStorage.getItem(columnStorageKey(view))); } catch {}
+  columnPreferences.set(view, new Set(Array.isArray(saved) ? saved : []));
+ }
+ return columnPreferences.get(view);
+}
+
+function applyReportColumns() {
+ const table = $('table-head').closest('table');
+ const hidden = hiddenReportColumns(columnView);
+ const keys = [...table.tHead.rows[0].cells].map(cell => cell.dataset.column);
+ const visibleCount = keys.filter(key => !hidden.has(key)).length;
+ for (const row of table.rows) {
+  if (row.cells[0]?.classList.contains('empty')) {
+   row.cells[0].colSpan = visibleCount;
+   continue;
+  }
+  for (const [index, cell] of [...row.cells].entries()) {
+   cell.hidden = index > 0 && hidden.has(keys[index]);
+  }
+ }
+ const compact = visibleCount < keys.length;
+ table.classList.toggle('report-columns-compact', compact);
+ if (compact) table.style.setProperty('--report-table-min', `${(columnView === 'campaigns' ? 250 : 150) + (visibleCount - 1) * 90}px`);
+}
+
+function configureReportColumns(columns) {
+ const schema = JSON.stringify(columns);
+ if (columnView !== state.view || columnSchema !== schema) {
+  columnMenu.open = false;
+  columnView = state.view;
+  columnSchema = schema;
+  const hidden = hiddenReportColumns(columnView);
+  hidden.delete(columns[0][0]);
+  columnOptions.innerHTML = columns.map(([key, label], index) =>
+   `<label><input type="checkbox" value="${esc(key)}" ${hidden.has(key) ? '' : 'checked'} ${index === 0 ? 'disabled' : ''}>${esc(label)}</label>`
+  ).join('');
+ }
+ [...$('table-head').rows[0].cells].forEach((cell, index) => { cell.dataset.column = columns[index][0]; });
+ applyReportColumns();
+}
+
+function saveReportColumns() {
+ try { localStorage.setItem(columnStorageKey(columnView), JSON.stringify([...hiddenReportColumns(columnView)])); } catch {}
+ applyReportColumns();
+}
+
+columnOptions.addEventListener('change', event => {
+ const input = event.target;
+ if (input.type !== 'checkbox' || input.disabled) return;
+ const hidden = hiddenReportColumns(columnView);
+ if (input.checked) hidden.delete(input.value);
+ else hidden.add(input.value);
+ saveReportColumns();
+});
+$('report-columns-reset').onclick = () => {
+ hiddenReportColumns(columnView).clear();
+ columnOptions.querySelectorAll('input').forEach(input => { input.checked = true; });
+ saveReportColumns();
+};
+document.addEventListener('click', event => {
+ if (columnMenu.open && !columnMenu.contains(event.target)) columnMenu.open = false;
+});
+columnMenu.addEventListener('keydown', event => {
+ if (event.key !== 'Escape' || !columnMenu.open) return;
+ columnMenu.open = false;
+ columnMenu.querySelector('summary').focus();
+});
+
 function renderDailyTable(){
  recentUI.close();
  const rows=filteredDays(),columns=[['date','Data'],['cost','Custo'],['revenue','Receita'],['profit','Lucro'],['roi','ROI %'],['ecpm','eCPM'],['pmr','PMR'],['cpc','CPC GAM'],['conversion_rate','Conversão'],['cost_per_conversion','Custo/Conv'],['ads_cpc','CPC Ads']];
@@ -121,6 +199,7 @@ function renderDailyTable(){
  $('table-head').innerHTML='<tr>'+columns.map(([key,label])=>'<th scope="col" title="'+esc(metricTitles[key]||label)+'" aria-sort="'+(state.sort===key?(state.direction===1?'ascending':'descending'):'none')+'"><button data-sort="'+key+'">'+label+(state.sort===key?(state.direction===1?' ↑':' ↓'):'')+'</button></th>').join('')+'</tr>';
  $('table-body').innerHTML=rows.length?rows.map(d=>'<tr><td>'+esc(d.date.split('-').reverse().join('/'))+dailyChangeIcon(d.date)+'</td><td>'+money(d.cost)+'</td><td'+deductionTitle(d)+'>'+money(d.revenue)+'</td><td class="'+(d.profit==null?'':d.profit<0?'negative':'positive')+'">'+money(d.profit)+'</td><td>'+pct(d.roi)+'</td>'+campaignMetricCells(d)+'</tr>').join(''):'<tr><td colspan="11" class="empty">'+(selectedCampaignRows().length?'Nenhum dia corresponde aos filtros.':'Campanha sem dados neste período ou site. Dias ainda não importados são coletados em segundo plano.')+'</td></tr>';
  const totals=dailyTotals(rows);$('table-foot').hidden=!rows.length;$('table-foot').innerHTML='<tr><td>Total filtrado</td><td>'+money(totals.cost)+'</td><td>'+money(totals.revenue)+'</td><td>'+money(totals.profit)+'</td><td>'+pct(totals.roi)+'</td>'+campaignMetricCells(totals)+'</tr>';
+ configureReportColumns(columns);
  recentUI.bind();budgetsUI.bind();
  $('showing').textContent=rows.length+' dias';$('export').disabled=!rows.length;
  $('table-head').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{state.direction=state.sort===b.dataset.sort?-state.direction:1;state.sort=b.dataset.sort;renderDailyTable();});
@@ -153,6 +232,7 @@ function renderTable(){recentUI.close();if(state.view==='campaign'){renderDailyT
  $('table-body').innerHTML=rows.length?rows.map(r=>isSites?`<tr><td><button class="site-button" data-site="${esc(r.site)}"><strong>${esc(r.site)}</strong></button><small>Abrir campanhas ↗</small></td><td>${r.campaigns}</td><td>${money(r.cost)}</td><td${deductionTitle(r)}>${money(r.revenue)}</td><td class="${r.profit<0?'negative':'positive'}">${money(r.profit)}</td><td>${roi(r.roi)}</td>${gamCells(r)}<td><span class="status-tag ${r.pending?'':'ok'}">${r.pending?r.pending+' pendências':'Conciliado'}</span></td></tr>`:`<tr><td><div class="campaign-title-row"><a class="campaign-name campaign-report-link" data-campaign-report href="${esc(detailPath(r))}" title="Abrir relatório de ${esc(r.name)}">${esc(r.name)}</a>${infoButton(r)}</div><small class="campaign-meta">${googleAdsID(r)}<span class="campaign-type" data-type-account="${esc(r.account)}" data-type-campaign="${esc(r.campaign)}" title="Tipo de campanha no Google Ads">${esc(campaignTypeLabel(r.campaign_type))}</span>${finalURLCell(r)}${budgetButton(r)}</small></td>${hideSite?'':`<td><span class="domain">${esc(r.site||'Não identificado')}</span></td>`}<td>${money(r.cost)}</td><td${deductionTitle(r)}>${money(r.revenue)}</td><td class="${r.profit==null?'':r.profit<0?'negative':'positive'}">${money(r.profit)}</td><td>${roi(r.roi)}</td>${campaignMetricCells(r)}</tr>`).join(''):'<tr><td colspan="'+columns.length+'" class="empty">'+(state.run?'Nenhum resultado para os filtros selecionados.':'Sincronize as fontes para analisar seus resultados.')+'</td></tr>';
  const adsTotals=adsMetrics(rows.flatMap(r=>r.ads_original||[]),state.run?.result?.rates),gamTotals=gamMetrics((isSites?(state.run?.result?.rows||[]).filter(r=>r.comparable&&rows.some(g=>(r.site||'Sem site identificado')===g.site)):rows).flatMap(r=>r.gam_original||[]),state.run?.result?.rates),cost=rows.reduce((s,r)=>s+(r.cost||0),0),revenue=rows.reduce((s,r)=>s+(r.revenue||0),0),confirmed=rows.filter(r=>isSites?r.compared>0:r.comparable),matchedCost=confirmed.reduce((s,r)=>s+r.cost,0),profit=confirmed.reduce((s,r)=>s+(r.profit||0),0);
  $('table-foot').hidden=!rows.length;$('table-foot').innerHTML=`<tr><td>Total filtrado</td>${hideSite?'':'<td></td>'}<td>${money(cost)}</td><td>${money(revenue)}</td><td>${confirmed.length?money(profit):'—'}</td><td>${matchedCost?pct(profit/matchedCost):'—'}</td>${isSites?gamCells(gamTotals):campaignMetricCells({...gamTotals,...adsTotals})}${isSites?'<td></td>':''}</tr>`;$('showing').textContent=rows.length+' resultados';$('export').disabled=!rows.length;
+ configureReportColumns(columns);
  $('table-head').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{state.direction=state.sort===b.dataset.sort?-state.direction:-1;state.sort=b.dataset.sort;renderTable();});$('table-head').querySelector('[data-campaign-search]')?.addEventListener('click',()=>setCampaignSearch(!state.searchOpen));$('table-head').querySelector('[data-campaign-grid]')?.addEventListener('click',()=>gridUI.open({site:$('site').value,end:state.run?.end||$('end').value}));bindCampaignLinks();budgetsUI.bind();recentUI.bind();$('table-body').querySelectorAll('[data-site]').forEach(b=>b.onclick=()=>openSiteCampaigns(b.dataset.site));
 }
 function renderLinks(){const pending=(state.run?.result?.pending||[]).filter(r=>matchesSite(r)),groups=new Map();for(const p of pending){const k=JSON.stringify([p.network,p.site,p.utm]);if(!groups.has(k))groups.set(k,{...p,revenue_brl:0,original:0});const g=groups.get(k);g.revenue_brl+=p.revenue_brl||0;g.original+=p.revenue;}
