@@ -27,10 +27,10 @@ test('local queries isolate source and period and join multiple networks without
  assert.equal(store.read(scope).totals.revenue,15);const both=store.read({...scope,networks:[network,'5678']});assert.equal(both.totals.cost,10);assert.equal(both.totals.revenue,25);assert.equal(both.totals.profit,15);
  }finally{db.close();}
 });
-test('automatic collection runs every 30 minutes, revisits 30 days daily, and prevents overlapping work',async()=>{
+test('automatic collection runs hourly, revisits seven days once daily, and prevents overlapping work',async()=>{
  let time=Date.parse('2026-10-26T12:00:00Z'),state={},count=0,release;
- const scheduler=createROIScheduler({enabled:true,clock:()=>time,day:()=>new Date(time).toISOString().slice(0,10),read:()=>state,write:s=>state=s,isBusy:()=>false,run:async range=>{count++;assert.equal(range.start,count===1?'2026-09-27':'2026-10-20');if(count===1)await new Promise(r=>release=r);return {complete:true};}});
- const first=scheduler.tick();await Promise.resolve();await scheduler.tick();assert.equal(count,1);release();await first;time+=29*60000;await scheduler.tick();assert.equal(count,1);time+=60000;await scheduler.tick();assert.equal(count,2);assert.equal(scheduler.status().interval_minutes,30);scheduler.stop();
+ const scheduler=createROIScheduler({enabled:true,clock:()=>time,day:()=>new Date(time).toISOString().slice(0,10),read:()=>state,write:s=>state=s,isBusy:()=>false,run:async range=>{count++;assert.deepEqual(range,count===1?{start:'2026-10-20',end:'2026-10-26',deep:true}:{start:'2026-10-26',end:'2026-10-26',deep:false});if(count===1)await new Promise(r=>release=r);return {complete:true};}});
+ const first=scheduler.tick();await Promise.resolve();await scheduler.tick();assert.equal(count,1);release();await first;time+=59*60000;await scheduler.tick();assert.equal(count,1);time+=60000;await scheduler.tick();assert.equal(count,2);assert.equal(scheduler.status().interval_minutes,60);scheduler.stop();
 });
 test('failed automatic collection retries with backoff and keeps the previous successful timestamp',async()=>{
  let time=Date.parse('2026-10-26T12:00:00Z'),state={last_success:'2026-10-25T12:00:00Z'},count=0;

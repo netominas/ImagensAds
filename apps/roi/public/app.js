@@ -302,7 +302,7 @@ function applyCatalog(catalog,selected){
  $('gam-count').textContent=catalog.networks.length;renderNetworks();$('scope-label').textContent=catalog.accounts.length+' contas disponíveis · '+catalog.networks.length+' redes';$('workspace-summary').textContent=catalog.accounts.length+' contas Google Ads · '+catalog.networks.length+' redes Ad Manager';$('sync').disabled=state.busy;
 }
 function reportScope(){return {start:$('start').value,end:$('end').value,accounts:selectValues('accounts'),networks:selectValues('networks')};}
-function showAutomatic(status){state.automatic=status.automatic;const auto=status.automatic;$('auto-status').textContent=auto?.enabled?(status.running?'Atualização em segundo plano · consultas ao banco disponíveis':'Atualização automática · a cada 30 minutos'):'Consulta ao banco local';if(auto?.enabled&&auto.error&&!status.running)$('auto-status').textContent+=' · nova tentativa automática';}
+function showAutomatic(status){state.automatic=status.automatic;const auto=status.automatic;$('auto-status').textContent=auto?.enabled?(status.running?'Atualização em segundo plano · consultas ao banco disponíveis':'Atualização automática · a cada hora'):'Consulta ao banco local';if(auto?.enabled&&auto.error&&!status.running)$('auto-status').textContent+=' · nova tentativa automática';}
 async function loadDatabase(ensure=true){
  if(!$('start').value||!$('end').value||!state.catalog)return;
  const token=++state.requestToken,scope=reportScope();state.loading=true;
