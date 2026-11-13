@@ -75,7 +75,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
  }
  async function collect(run,scope,rules,plan){
   const progress=message=>db.prepare('UPDATE roi_runs SET progress=? WHERE id=?').run(message,run);
-  let data=warehouse.meta('catalog')||{accounts:[],networks:[],warnings:[]},catalogError='';if(!plan)try{progress('Atualizando catálogo de contas e redes…');data=await refreshCatalog();}catch{catalogError='O catálogo não pôde ser atualizado; foram mantidas as fontes já conhecidas.';}
+  let data=warehouse.meta('catalog')||{accounts:[],networks:[],warnings:[]},catalogError='';if(getRun(run).config.mode==='manual'&&!plan)try{progress('Atualizando catálogo de contas e redes…');data=await refreshCatalog();}catch{catalogError='O catálogo não pôde ser atualizado; foram mantidas as fontes já conhecidas.';}
   const tasks=plan||[...scope.accounts.map(source=>({kind:'ads',source,start:scope.start,end:scope.end})),...scope.networks.map(source=>({kind:'gam',source,start:scope.start,end:scope.end}))];
   const ads=tasks.filter(t=>t.kind==='ads'),gam=tasks.filter(t=>t.kind==='gam');let cursor=0,done=0;
   const collectAds=async()=>{for(;;){const task=ads[cursor++];if(!task)break;const account=data.accounts.find(a=>a.id===task.source);try{if(!account)throw Error('Fonte indisponível');const facts=await loadCosts(google,account,task.start,task.end);warehouse.saveSource('ads',task.source,task.start,task.end,facts);}catch(error){warehouse.failSource('ads',task.source,task.start,task.end,adsCollectionError(error));}done++;progress(`Google Ads: ${done} de ${ads.length} coletas concluídas`);}};
@@ -92,14 +92,14 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   const manual=getRun(run).config.mode==='manual',stored=manual?result:{database:true,data_coverage:result.data_coverage,warnings:result.warnings,updated_at:result.updated_at,sources:result.sources};warehouse.putMeta('collection_warnings',[catalogError,fxError].filter(Boolean));
   db.prepare("UPDATE roi_runs SET status='done',result=?,progress='Concluído',finished=? WHERE id=?").run(JSON.stringify(stored),new Date().toISOString(),run);warehouse.putMeta('last_collection',{at:new Date().toISOString(),run,complete:result.data_coverage.complete,stale:result.data_coverage.stale_days>0});return {complete:result.data_coverage.complete&&!result.data_coverage.stale_days&&!fxError&&!catalogError};
  }
- const placements=createPlacements(db,{google,admanager,catalog,settings:()=>defaults(warehouse.meta('catalog')||{accounts:[],networks:[]}),warehouse,loadRates:rates,autoSync,isBusy:()=>active,baseline:({account,campaign,start,end})=>{const result=databaseReport({start,end,...defaults(warehouse.meta('catalog')||{accounts:[],networks:[]})}).result,rows=result.rows.filter(r=>r.account===account&&r.campaign===campaign);return {revenue:result.data_coverage.complete&&!result.data_coverage.stale_days&&rows.length&&rows.every(r=>r.revenue!=null&&!r.ambiguous)?rows.reduce((s,r)=>s+(r.gross_revenue??r.revenue),0):null,deductions:deductions.read(),deduction_days:rows.flatMap(r=>r.deduction_days||[])};}});
+ const placements=createPlacements(db,{google,admanager,catalog,settings:()=>defaults(warehouse.meta('catalog')||{accounts:[],networks:[]}),warehouse,loadRates:rates,isBusy:()=>active,baseline:({account,campaign,start,end})=>{const result=databaseReport({start,end,...defaults(warehouse.meta('catalog')||{accounts:[],networks:[]})}).result,rows=result.rows.filter(r=>r.account===account&&r.campaign===campaign);return {revenue:result.data_coverage.complete&&!result.data_coverage.stale_days&&rows.length&&rows.every(r=>r.revenue!=null&&!r.ambiguous)?rows.reduce((s,r)=>s+(r.gross_revenue??r.revenue),0):null,deductions:deductions.read(),deduction_days:rows.flatMap(r=>r.deduction_days||[])};}});
  const analysis=createCampaignAnalysis(storage,{catalog,scope:()=>defaults(warehouse.meta('catalog')||{accounts:[],networks:[]}),report:scope=>databaseReport(scope).result,changes:campaignChanges.list,isBusy:()=>active,...(generateAnalysis?{generate:generateAnalysis}:{})});
- const scheduler=createROIScheduler({enabled:autoSync,read:()=>warehouse.meta('auto_sync'),write:value=>warehouse.putMeta('auto_sync',value),isBusy:()=>active,day:today,run:async(range,{retry})=>{
+ const scheduler=createROIScheduler({enabled:autoSync,read:()=>warehouse.meta('auto_sync'),write:value=>warehouse.putMeta('auto_sync',value),isBusy:()=>active,day:today,run:async range=>{
   const data=await catalog(),selected=defaults(data);
   if(!selected.accounts.length||!selected.networks.length)throw Error('Configure as fontes');
   if(!config())db.prepare('INSERT OR REPLACE INTO roi_settings VALUES (1,?)').run(JSON.stringify(selected));
-  const scope={start:range.start,end:range.end,...selected},plan=retry?warehouse.missingRanges(scope,{retryFailed:true}):null;
-  const job=launch(scope,{mode:retry?'automatic-retry':range.deep?'automatic-deep':'automatic',plan});
+  const scope={start:range.start,end:range.end,...selected};
+  const job=launch(scope,{mode:range.deep?'automatic-deep':'automatic'});
   return await job.promise;
  }});
  async function gridScope(body){const range=gridPeriod(body.site,body.end||today()),data=await catalog();return {...range,scope:scopeFrom({...range,...defaults(data)},data)};}
@@ -142,7 +142,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   if(path==='/history')return authJSON({runs:[]});
   if(path==='/campaign-budgets'){
    const accounts=(url.searchParams.get('accounts')||'').split(',').filter(Boolean);if(!accounts.length)return authJSON({items:[],warnings:[]});if(accounts.some(a=>!canAccount(user,a)))return denied();
-   const result=await budgets.listing(accounts);return authJSON({items:result.items.filter(r=>canCampaign(user,r.account,r.campaign)).map(({account,campaign,campaign_type,currency,period,micros,updated,stale})=>({account,campaign,campaign_type,currency,period,micros,updated,stale})),warnings:[]});
+   const result=await budgets.listing(accounts,{refresh:false});return authJSON({items:result.items.filter(r=>canCampaign(user,r.account,r.campaign)).map(({account,campaign,campaign_type,currency,period,micros,updated,stale})=>({account,campaign,campaign_type,currency,period,micros,updated,stale})),warnings:[]});
   }
     if(path==='/roi-grid')return authJSON(await gridData({site:url.searchParams.get('site'),end:url.searchParams.get('end')},user));
   if(path==='/placement-grid'){const body=Object.fromEntries(['account','campaign','end'].map(k=>[k,url.searchParams.get(k)]));if(!canCampaign(user,body.account,body.campaign))return denied();return authJSON(await placements.grid(body,{reader:true}));}
@@ -172,7 +172,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
     if(path==='/payments')return authJSON(await payments.list());
     if(path==='/google-ads-link'){const account=url.searchParams.get('account'),campaign=url.searchParams.get('campaign');if(!/^\d{10}$/.test(account||'')||!/^\d{1,20}$/.test(campaign||''))throw new AdsError('Conta ou campanha inválida.',{status:400});const data=await catalog(),selected=data.accounts.find(a=>a.id===account);if(!selected)throw new AdsError('Esta conta não está disponível para o painel.',{status:403});return new Response(null,{status:303,headers:{Location:await googleAdsLink(selected,campaign),'Cache-Control':'private, no-store','Vary':'Cookie'}});}
     if(path==='/campaign-changes'){const account=url.searchParams.get('account'),campaign=url.searchParams.get('campaign');campaignChanges.scope(account,campaign);if(!(await catalog()).accounts.some(a=>a.id===account))throw new AdsError('Conta indisponível para este painel.',{status:403});const recent=url.searchParams.get('recent');if(recent!==null&&recent!=='7')throw new AdsError('Período de alterações inválido.',{status:400});const end=today();return authJSON({items:recent?campaignChanges.recent(account,campaign,shiftDay(end,-6),end):campaignChanges.list(account,campaign),types:changeTypes,...(recent?{start:shiftDay(end,-6),end}: {})});}
-    if(path==='/campaign-budgets')return authJSON(await budgets.listing((url.searchParams.get('accounts')||'').split(',')));
+    if(path==='/campaign-budgets')return authJSON(await budgets.listing((url.searchParams.get('accounts')||'').split(','),{refresh:false}));
     if(path==='/budget')return authJSON(await budgets.read(url.searchParams.get('account'),url.searchParams.get('campaign')));
     if(path==='/budget-operation')return authJSON(await budgets.status(url.searchParams.get('id')));
     if(path==='/catalog')return authJSON({...await catalog(),settings:config(),links:links(),database:true});
@@ -186,7 +186,8 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
    if(!request.headers.get('content-type')?.startsWith('application/json'))return authJSON({error:'Envie JSON.'},415);
    let body;try{body=await request.json();}catch{throw new AdsError('JSON inválido.',{status:400});}if(!body||typeof body!=='object'||Array.isArray(body))throw new AdsError('Dados inválidos.',{status:400});
    if(path==='/deductions'&&method==='POST'){const saved=deductions.save(body,(await catalog()).networks,user?.email||'administrator');warehouse.touch();return authJSON(saved);}
-   if(path==='/roi-grid/ensure'&&method==='POST'){const {scope}=await gridScope(body);if(active)return authJSON({id:runningJob()?.id||null},202);const plan=warehouse.missingRanges(scope);if(!plan.length)return authJSON({id:null});return authJSON({id:launch(scope,{mode:'on-demand',plan}).id},202);}
+   if((path==='/roi-grid/ensure'||path==='/ensure')&&method==='POST')return authJSON({id:null},202);
+   if(path==='/roi-grid/refresh'&&method==='POST'){const {scope}=await gridScope(body);if(active)return authJSON({id:runningJob()?.id||null},202);const plan=warehouse.missingRanges(scope);if(!plan.length)return authJSON({id:null});return authJSON({id:launch(scope,{mode:'on-demand',plan}).id},202);}
    if((path==='/placement-grid/ensure'||path==='/placements/ensure')&&method==='POST')return authJSON({id:null},202);
    if(path==='/placement-grid/refresh'&&method==='POST')return authJSON(await placements.launch(placements.gridScope(body),{force:true}),202);
    if(path==='/placements/refresh'&&method==='POST')return authJSON(await placements.launch(body,{force:true}),202);
@@ -203,10 +204,9 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
     const data=await catalog();if(!data.networks.some(n=>n.id===body.network)||!data.accounts.some(a=>a.id===body.account)||!/^\d{1,20}$/.test(body.campaign||'')||typeof body.utm!=='string'||body.utm.length<1||body.utm.length>1000||typeof body.site!=='string'||site(body.site)!==body.site)throw new AdsError('Confira rede, domínio, UTM, conta e ID da campanha.',{status:400});
     const old=db.prepare('SELECT id FROM roi_links WHERE network=? AND site=? AND utm=?').get(body.network,body.site,body.utm);db.prepare('INSERT OR REPLACE INTO roi_links VALUES (?,?,?,?,?,?)').run(old?.id||id(),body.network,body.site,body.utm,body.account,body.campaign);warehouse.touch();return authJSON({links:links()});
    }
-   if((path==='/sync'||path==='/ensure')&&method==='POST'){
-    const scope=scopeFrom(body,await catalog());if(active){if(path==='/ensure')return authJSON({id:runningJob()?.id||null},202);throw new AdsError('Há uma atualização em andamento.',{status:409});}
-    const plan=path==='/ensure'?warehouse.missingRanges(scope):null;if(plan&&!plan.length)return authJSON({id:null});
-    if(path==='/sync')db.prepare('INSERT OR REPLACE INTO roi_settings VALUES (1,?)').run(JSON.stringify({accounts:scope.accounts,networks:scope.networks}));const job=launch(scope,{mode:path==='/ensure'?'on-demand':'manual',plan});return authJSON({id:job.id},202);
+   if(path==='/sync'&&method==='POST'){
+    const scope=scopeFrom(body,await catalog());if(active)throw new AdsError('Há uma atualização em andamento.',{status:409});
+    db.prepare('INSERT OR REPLACE INTO roi_settings VALUES (1,?)').run(JSON.stringify({accounts:scope.accounts,networks:scope.networks}));const job=launch(scope);return authJSON({id:job.id},202);
    }
    return authJSON({error:'Não encontrado.'},404);
   }catch(e){return authJSON({error:e instanceof AdsError?e.message:'Não foi possível concluir a consulta.'},e instanceof AdsError?e.status:502);}

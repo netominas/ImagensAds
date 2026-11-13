@@ -33,19 +33,19 @@ test('automatic collection runs hourly, revisits seven days once daily, and prev
  const scheduler=createROIScheduler({enabled:true,clock:()=>time,day:()=>new Date(time).toISOString().slice(0,10),read:()=>state,write:s=>state=s,isBusy:()=>false,run:async range=>{count++;assert.deepEqual(range,count===1?{start:'2026-10-20',end:'2026-10-26',deep:true}:{start:'2026-10-26',end:'2026-10-26',deep:false});if(count===1)await new Promise(r=>release=r);return {complete:true};}});
  const first=scheduler.tick();await Promise.resolve();await scheduler.tick();assert.equal(count,1);release();await first;time+=59*60000;await scheduler.tick();assert.equal(count,1);time+=60000;await scheduler.tick();assert.equal(count,2);assert.equal(scheduler.status().interval_minutes,60);scheduler.stop();
 });
-test('failed automatic collection retries with backoff and keeps the previous successful timestamp',async()=>{
+test('failed automatic collection waits for the next hour and keeps the previous successful timestamp',async()=>{
  let time=Date.parse('2026-10-26T12:00:00Z'),state={last_success:'2026-10-25T12:00:00Z'},count=0;
- const scheduler=createROIScheduler({enabled:true,clock:()=>time,day:()=>day,read:()=>state,write:s=>state=s,isBusy:()=>false,run:async()=>{count++;throw Error('offline');}});await scheduler.tick();assert.equal(state.last_ok,false);assert.equal(state.last_success,'2026-10-25T12:00:00Z');time+=4*60000;await scheduler.tick();assert.equal(count,1);time+=60000;await scheduler.tick();assert.equal(count,2);scheduler.stop();
+ const scheduler=createROIScheduler({enabled:true,clock:()=>time,day:()=>day,read:()=>state,write:s=>state=s,isBusy:()=>false,run:async()=>{count++;throw Error('offline');}});await scheduler.tick();assert.equal(state.last_ok,false);assert.equal(state.last_success,'2026-10-25T12:00:00Z');time+=4*60000;await scheduler.tick();assert.equal(count,1);time+=56*60000;await scheduler.tick();assert.equal(count,2);scheduler.stop();
 });
-test('failed hourly collection retries without moving the next regular cycle',async()=>{
+test('a failed seven-day collection is only attempted once per day',async()=>{
  let time=Date.parse('2026-10-26T12:00:00Z'),state={};
  const calls=[];
- const scheduler=createROIScheduler({enabled:true,clock:()=>time,day:()=> '2026-10-26',read:()=>state,write:s=>state=s,isBusy:()=>false,run:async(range,{retry})=>{calls.push([range,retry]);return {complete:retry};}});
+ const scheduler=createROIScheduler({enabled:true,clock:()=>time,day:()=> '2026-10-26',read:()=>state,write:s=>state=s,isBusy:()=>false,run:async range=>{calls.push(range);return {complete:false};}});
  await scheduler.tick();
  time+=5*60000;await scheduler.tick();
- assert.deepEqual(calls,[[{start:'2026-10-20',end:'2026-10-26',deep:true},false],[{start:'2026-10-20',end:'2026-10-26',deep:true},true]]);
+ assert.deepEqual(calls,[{start:'2026-10-20',end:'2026-10-26',deep:true}]);
  assert.equal(scheduler.status().next_at,'2026-10-26T13:00:00.000Z');
  time+=55*60000;await scheduler.tick();
- assert.deepEqual(calls.at(-1),[{start:'2026-10-26',end:'2026-10-26',deep:false},false]);
+ assert.deepEqual(calls.at(-1),{start:'2026-10-26',end:'2026-10-26',deep:false});
  scheduler.stop();
 });

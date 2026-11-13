@@ -3,7 +3,7 @@ export function roiGridPanel({api,readOnly=false,finalURLCell,infoButton,recentU
  const popup=$('recent-changes-card'),popupParent=popup.parentNode,popupNext=popup.nextSibling;
  const money=v=>v==null?'—':new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v),pct=v=>v==null?'—':new Intl.NumberFormat('pt-BR',{style:'percent',maximumFractionDigits:1}).format(v),date=v=>v.split('-').reverse().join('/');
  const reason={missing:'Dia ainda não importado',stale:'Falha na última coleta',fx:'Câmbio indisponível',timezone:'Fusos incompatíveis',ambiguous:'Receita com vínculo ambíguo',unlinked:'Sem receita vinculada de forma única',zero_cost:'Custo zero; ROI indefinido',no_activity:'Sem atividade registrada',ok:'Vínculo confirmado'};
- let context=null,data=null,version=0,timer=null,busy=false,attempts=0,sort='cost_total',direction=-1,visible=[];
+ let context=null,data=null,version=0,timer=null,busy=false,sort='cost_total',direction=-1,visible=[];
  function render(){
   recentUI.close();
   const q=$('roi-grid-search').value.trim().toLocaleLowerCase('pt-BR');visible=(data?.rows||[]).filter(r=>!q||[r.name,r.campaign].join(' ').toLocaleLowerCase('pt-BR').includes(q));
@@ -16,14 +16,14 @@ export function roiGridPanel({api,readOnly=false,finalURLCell,infoButton,recentU
   $('roi-grid-count').textContent=visible.length+(visible.length===1?' campanha':' campanhas');$('roi-grid-export').disabled=!visible.length;recentUI.bind();
  }
  function message(text){$('roi-grid-message').textContent=text;}
- function schedule(){clearTimeout(timer);timer=setTimeout(()=>void load(true),4000);}
- async function load(ensure=false){if(!context||busy)return;const current=version,scope={...context};busy=true;$('roi-grid-refresh').disabled=true;
+ function schedule(){clearTimeout(timer);timer=setTimeout(()=>void load(),4000);}
+ async function load(refresh=false){if(!context||busy)return;const current=version,scope={...context};busy=true;$('roi-grid-refresh').disabled=true;
   try{const response=await api('/roi-grid?'+new URLSearchParams(scope));if(current!==version)return;data=response;render();message(response.warnings.join(' '));
    if(response.importing&&response.missing){message('Importação em andamento. Os dias completos já podem ser consultados.');schedule();}
-   else if(ensure&&!readOnly&&response.missing&&attempts<2){attempts++;const result=await api('/roi-grid/ensure',scope);if(current!==version)return;if(result.id){message('Importando os dias pendentes em segundo plano…');schedule();}}
+   else if(refresh&&!readOnly&&response.missing){const result=await api('/roi-grid/refresh',scope);if(current!==version)return;if(result.id){message('Importando os dias pendentes em segundo plano…');schedule();}}
   }catch(e){if(current===version)message(e.message);}finally{if(current===version){busy=false;$('roi-grid-refresh').disabled=false;}}
  }
- $('roi-grid-close').onclick=()=>dialog.close();dialog.addEventListener('close',()=>{recentUI.close();if(popupNext?.parentNode===popupParent)popupParent.insertBefore(popup,popupNext);else popupParent.append(popup);context=null;version++;clearTimeout(timer);busy=false;});$('roi-grid-search').oninput=render;$('roi-grid-refresh').onclick=()=>{attempts=0;void load(true);};
+ $('roi-grid-close').onclick=()=>dialog.close();dialog.addEventListener('close',()=>{recentUI.close();if(popupNext?.parentNode===popupParent)popupParent.insertBefore(popup,popupNext);else popupParent.append(popup);context=null;version++;clearTimeout(timer);busy=false;});$('roi-grid-search').oninput=render;$('roi-grid-refresh').onclick=()=>{void load(true);};
  $('roi-grid-export').onclick=()=>{if(!data||!visible.length)return;const safe=v=>'"'+String(v??'').replace(/^[=+@-]/,"'$&").replaceAll('"','""')+'"',rows=[['Campanha','ID',...data.dates.map(d=>date(d)+' ROI (%)')],...visible.map(r=>[r.name,r.campaign,...r.cells.map(c=>c.roi==null?'':c.roi*100)])],url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(safe).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='roi-diario-'+context.site+'-'+data.end+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
- return {open(scope){recentUI.close();dialog.append(popup);context=scope;data=null;version++;attempts=0;busy=false;clearTimeout(timer);sort='cost_total';direction=-1;$('roi-grid-search').value='';message('');render();if(!dialog.open)dialog.showModal();void load(true);}};
+ return {open(scope){recentUI.close();dialog.append(popup);context=scope;data=null;version++;busy=false;clearTimeout(timer);sort='cost_total';direction=-1;$('roi-grid-search').value='';message('');render();if(!dialog.open)dialog.showModal();void load();}};
 }

@@ -27,9 +27,9 @@ export function createBudgets(db,google,{accountFor}){
    db.exec('BEGIN IMMEDIATE');try{db.prepare('DELETE FROM roi_campaign_budgets WHERE account=? AND updated<=?').run(a.id,started);for(const data of values){const newer=db.prepare('SELECT updated FROM roi_campaign_budgets WHERE account=? AND campaign=?').get(a.id,data.campaign);if(!newer||newer.updated<=started)saveValues(data);}db.prepare('INSERT OR REPLACE INTO roi_budget_catalog VALUES (?,?,NULL)').run(a.id,stamp());db.exec('COMMIT');}catch(error){db.exec('ROLLBACK');throw error;}
   }catch{db.prepare('INSERT OR REPLACE INTO roi_budget_catalog VALUES (?,?,?)').run(a.id,stamp(),'Última consulta de orçamento indisponível; valor armazenado preservado.');}})();pending.set(a.id,task);try{await task;}finally{pending.delete(a.id);}
  }
- async function listing(accounts){
+ async function listing(accounts,{refresh=true}={}){
   if(!Array.isArray(accounts)||!accounts.length||accounts.length>120||new Set(accounts).size!==accounts.length)fail('Selecione contas válidas.');const available=[];for(const account of accounts)available.push(await accountFor(account));
-  let cursor=0;await Promise.all(Array.from({length:Math.min(3,available.length)},async()=>{for(;;){const a=available[cursor++];if(!a)break;await refreshAccount(a);}}));
+  let cursor=0;if(refresh)await Promise.all(Array.from({length:Math.min(3,available.length)},async()=>{for(;;){const a=available[cursor++];if(!a)break;await refreshAccount(a);}}));
   const items=[],warnings=[];for(const a of available){const info=db.prepare('SELECT * FROM roi_budget_catalog WHERE account=?').get(a.id);if(info?.error)warnings.push({account:a.id,message:info.error});for(const row of db.prepare('SELECT data,updated FROM roi_campaign_budgets WHERE account=?').all(a.id))items.push({...JSON.parse(row.data),updated:row.updated,stale:Boolean(info?.error)||Date.now()-Date.parse(row.updated)>ttl});}return {items,warnings};
  }
  db.prepare("UPDATE roi_budget_operations SET status='FAILED',error='Conferência interrompida antes do envio.' WHERE status='CHECKING'").run();

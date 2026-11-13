@@ -69,7 +69,7 @@ test('users persist, isolate ROI including totals and exports, revoke sessions a
   assert.equal(quick.days.length,7);
   assert.deepEqual(quick.days.at(-1),{date,cost:10,revenue:20,profit:10,roi:1});
   assert.ok(quick.days.slice(0,-1).every(day=>day.cost===null&&day.roi===null));
-  const budgets=await(await request('/apps/roi/api/campaign-budgets?accounts='+account)).json();assert.deepEqual(budgets.items.map(r=>r.campaign),['11','12']);assert.equal(budgets.items[0].resource,undefined);
+  const budgets=await(await request('/apps/roi/api/campaign-budgets?accounts='+account)).json();assert.deepEqual(budgets.items,[]);
   for(const path of ['/apps/roi/api/run?id='+'a'.repeat(32),'/apps/roi/api/budget?account='+account+'&campaign=13','/apps/roi/api/budget-operation?id='+'a'.repeat(32),'/apps/roi/api/payments','/apps/roi/api/campaign-changes?account='+account+'&campaign=13'])assert.equal((await request(path)).status,403,path);
   for(const path of ['/apps/roi/api/budget-preview','/apps/roi/api/budget-apply','/apps/roi/api/campaign-changes','/apps/roi/api/sync','/apps/roi/api/ensure','/apps/roi/api/settings','/apps/roi/api/links','/apps/roi/api/payments/refresh','/apps/google-ads/api/drafts/new','/.netlify/functions/generate-background'])assert.equal((await request(path,{account,campaign:'11'})).status,403,path);
   assert.equal((await(await request('/apps/roi/api/history')).json()).runs.length,0);assert.equal((await(await request('/apps/roi/api/status')).json()).running,null);assert.equal(mutationCalls,0);
