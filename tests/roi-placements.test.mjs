@@ -25,15 +25,30 @@ test('unmatched, Other, missing FX, timezone, stale, incomplete and ambiguous re
  for(const patch of [{complete:false},{stale:true},{collision:true},{revenues:[gam({currency:'USD'})]},{revenues:[gam({timezone:'America/New_York'})]},{baseline:{revenue:10}}])assert.equal(placementReport({...base,...patch}).rows[0].profit,null);
  const r=placementReport({...base,ads:[ads({placement:'Other',placement_key:null}),ads({placement:'unmatched.com',placement_key:placementKey('unmatched.com')})]});assert.ok(r.rows.every(r=>r.profit===null));assert.equal(r.rows.find(r=>r.placement==='portal.com').cost,null);assert.equal(r.rows.find(r=>r.placement==='unmatched.com').revenue,null);
 });
-function fixture(type='DISPLAY'){
+function fixture(type='DISPLAY',options={}){
  const db=new DatabaseSync(':memory:'),warehouse=createROIWarehouse(db),calls=[],state={fail:false,type};
  const catalog=async()=>({accounts:[{id:account,mcc:'',status:'ENABLED'}],networks:[network]});
  const google={search:async(id,q)=>{calls.push(q);if(q.includes('FROM customer'))return [{customer:{currencyCode:'BRL',timeZone:'America/Sao_Paulo'}}];if(q.includes('FROM group_placement_view'))return [{campaign:{id:campaign},segments:{date:day},groupPlacementView:{placement:'portal.com',placementType:'WEBSITE'},metrics:{costMicros:'10000000',clicks:'10',impressions:'100',averageCpc:'1000000',conversions:'2',interactions:'10',conversionsFromInteractionsRate:.2,costPerConversion:'5000000'}}];if(!q.includes('segments.date'))return [{campaign:{id:campaign,name:'Target only',advertisingChannelType:state.type}}];return [{campaign:{id:campaign},segments:{date:day},metrics:{costMicros:'12000000',clicks:'10',impressions:'100'}}];}};
  const admanager={keys:async()=>[{id:'5',name:'utm_content',reportableType:'ON'}],report:async()=>{calls.push('gam');if(state.fail)throw Error('private-secret');return {mode:'CUSTOM_CRITERIA',rows:[csv(),csv({'Dimension.CUSTOM_CRITERIA':'utm_content=12_secret.com','Column.AD_EXCHANGE_LINE_ITEM_LEVEL_REVENUE':'999000000'})],report_id:'1'};}};
- const service=createPlacements(db,{google,admanager,catalog,settings:()=>({networks:['9']}),warehouse,loadRates:async()=>({}),baseline:()=>({revenue:20})});
+ const service=createPlacements(db,{google,admanager,catalog,settings:()=>({networks:['9']}),warehouse,loadRates:async()=>({}),baseline:()=>({revenue:20}),...options});
  return {db,warehouse,calls,service,state,google,admanager};
 }
 async function done(f){for(let i=0;i<30;i++){const status=f.db.prepare('SELECT status FROM roi_placement_jobs ORDER BY created DESC LIMIT 1').get()?.status;if(status&&status!=='running')return;await new Promise(r=>setImmediate(r));}assert.fail('job did not complete');}
+test('scheduled placements run once per campaign in the 5 AM Brasilia window',async()=>{
+ let time=Date.parse(day+'T07:59:00Z');
+ const f=fixture('DISPLAY',{autoSync:true,clock:()=>time});
+ try{
+  f.db.prepare('INSERT INTO roi_placement_subscriptions VALUES (?,?,?,NULL)').run(account,campaign,new Date(time).toISOString());
+  await f.service.tick();assert.equal(f.calls.length,0);
+  time+=60000;await f.service.tick();await done(f);
+  assert.equal(f.calls.filter(q=>q.includes('FROM group_placement_view')).length,1);
+  time+=1800000;await f.service.tick();
+  time+=1800000;await f.service.tick();
+  assert.equal(f.db.prepare('SELECT count(*) n FROM roi_placement_jobs').get().n,1);
+  await f.service.launch(scope,{force:true});await done(f);
+  assert.equal(f.calls.filter(q=>q.includes('FROM group_placement_view')).length,2);
+ }finally{f.service.stop();f.db.close();}
+});
 test('local cache persists daily data, GET never calls providers, missing data imports once and failures preserve facts',async()=>{
  const f=fixture();try{
   assert.equal((await f.service.read(scope)).rows.length,0);assert.equal(f.calls.length,0);await f.service.launch(scope);await done(f);let r=await f.service.read(scope);assert.equal(r.complete,true);assert.equal(r.rows.length,1);assert.equal(r.rows[0].profit,10);assert.ok(!JSON.stringify(r).includes('secret.com'));
@@ -47,6 +62,9 @@ test('readers get only authorized campaign placements and cannot launch collecti
  try{f.warehouse.putMeta('catalog',{accounts:[{id:account}],networks:[network]});f.db.prepare('INSERT OR REPLACE INTO roi_settings VALUES (1,?)').run(JSON.stringify({accounts:[account],networks:['9']}));await f.service.launch(scope);await done(f);
   const r=await api(req('?'+new URLSearchParams(scope)),reader);assert.equal(r.status,200);const result=await r.json();assert.equal(result.rows[0].placement,'portal.com');assert.ok(!JSON.stringify(result).includes('Private network'));assert.ok(!JSON.stringify(result).includes('secret.com'));
   assert.equal((await api(req('?'+new URLSearchParams({...scope,campaign:'12'})),reader)).status,403);assert.equal((await api(req('/refresh',scope),reader)).status,403);assert.equal((await api(req('/ensure',scope,'https://evil.test'))).status,403);assert.equal((await api(req('?'+new URLSearchParams({...scope,account:'bad'})))).status,400);
+  const before=f.calls.length;
+  assert.deepEqual(await (await api(req('/ensure',{...scope,campaign:'12'}))).json(),{id:null});
+  assert.equal(f.calls.length,before);
  }finally{api.stopAuto();f.service.stop();f.db.close();}
 });
 

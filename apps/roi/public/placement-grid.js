@@ -2,7 +2,7 @@ export function placementGridPanel({api,readOnly=false}){
  const $=id=>document.getElementById('placement-grid-'+id),dialog=$('dialog'),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const money=v=>v==null?'—':new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v),pct=v=>v==null?'—':new Intl.NumberFormat('pt-BR',{style:'percent',maximumFractionDigits:1}).format(v),date=d=>d.split('-').reverse().join('/');
  const reasons={matched:'Vínculo confirmado',missing:'Coleta incompleta',stale:'Falha na última coleta',no_activity:'Sem atividade registrada',zero_cost:'Custo zero; ROI indefinido',cost_only:'Sem receita vinculada por utm_content',revenue_only:'Sem custo por placement',timezone:'Fusos diferentes',incomplete:'Coleta incompleta ou atrasada',ambiguous_campaign:'Campanha ambígua',revenue_overlap:'Receita divergente',unmapped_type:'Formato ainda não conciliado',deductions_pending:'Base dos descontos pendente'};
- let context=null,data=null,visible=[],version=0,timer=null,busy=false,attempts=0,sort='cost_total',direction=-1;
+ let context=null,data=null,visible=[],version=0,timer=null,busy=false,sort='cost_total',direction=-1;
  const metric=()=>$('metric').value,format=value=>metric()==='profit'?money(value):pct(value);
  function render(){
   const q=$('search').value.trim().toLocaleLowerCase('pt-BR');visible=(data?.rows||[]).filter(r=>!q||r.placement.toLocaleLowerCase('pt-BR').includes(q));
@@ -14,15 +14,16 @@ export function placementGridPanel({api,readOnly=false}){
   $('body').querySelectorAll('[data-placement-grid-cell]').forEach(b=>b.onclick=()=>{$('detail').textContent=b.title;});
   $('count').textContent=visible.length+' placements';$('export').disabled=!visible.length;
  }
- function schedule(delay=4000){clearTimeout(timer);if(context)timer=setTimeout(()=>void load(true),delay);}
- async function load(ensure=false){
+ $('refresh').textContent=readOnly?'Recarregar':'Atualizar placements';
+ function schedule(delay=4000){clearTimeout(timer);if(context)timer=setTimeout(()=>void load(),delay);}
+ async function load(refresh=false){
   if(!context||busy)return;const current=version,scope={account:context.account,campaign:context.campaign,end:context.end};busy=true;$('refresh').disabled=true;
   try{const result=await api('/placement-grid?'+new URLSearchParams(scope));if(current!==version)return;data=result;render();$('message').textContent=result.warnings.join(' ');
    if(result.importing){$('message').textContent='Coleta de placements em andamento. Os dias completos já estão disponíveis.';schedule();}
-   else if(ensure&&!readOnly&&result.missing&&attempts<2){attempts++;try{const job=await api('/placement-grid/ensure',scope);if(current!==version)return;if(job.id){$('message').textContent='Importando os dias pendentes em segundo plano…';schedule();}}catch(e){if(current!==version)return;if(/outra coleta de placements/.test(e.message)){attempts--;schedule(15000);}throw e;}}
+   else if(refresh&&!readOnly){const job=await api('/placement-grid/refresh',scope);if(current!==version)return;if(job.id){$('message').textContent='Atualizando placements em segundo plano…';schedule();}}
   }catch(e){if(current===version)$('message').textContent=e.message;}finally{if(current===version){busy=false;$('refresh').disabled=false;}}
  }
- $('close').onclick=()=>dialog.close();dialog.addEventListener('close',()=>{context=null;version++;clearTimeout(timer);busy=false;});$('search').oninput=render;$('metric').onchange=()=>{$('detail').textContent='';render();};$('refresh').onclick=()=>{attempts=0;void load(true);};
+ $('close').onclick=()=>dialog.close();dialog.addEventListener('close',()=>{context=null;version++;clearTimeout(timer);busy=false;});$('search').oninput=render;$('metric').onchange=()=>{$('detail').textContent='';render();};$('refresh').onclick=()=>{void load(true);};
  $('export').onclick=()=>{if(!data||!visible.length)return;const safe=v=>'"'+String(v??'').replace(/^[=+@-]/,"'$&").replaceAll('"','""')+'"',rows=[['Placement','Tipo',...data.dates.flatMap(d=>[date(d)+' Custo (BRL)',date(d)+' Receita (BRL)',date(d)+' Lucro (BRL)',date(d)+' ROI (%)',date(d)+' Situação'])],...visible.map(r=>[r.placement,r.type,...r.cells.flatMap(c=>[c.cost,c.revenue,c.profit,c.roi==null?'':c.roi*100,reasons[c.status]||c.status])])],url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(safe).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='roi-placements-diario-'+context.campaign+'-'+data.end+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
- return {close(){if(dialog.open)dialog.close();},open(scope){context={...scope};data=null;visible=[];version++;clearTimeout(timer);busy=false;attempts=0;sort='cost_total';direction=-1;$('search').value='';$('metric').value='roi';$('message').textContent='';$('detail').textContent='';render();if(!dialog.open)dialog.showModal();void load(true);}};
+ return {close(){if(dialog.open)dialog.close();},open(scope){context={...scope};data=null;visible=[];version++;clearTimeout(timer);busy=false;sort='cost_total';direction=-1;$('search').value='';$('metric').value='roi';$('message').textContent='';$('detail').textContent='';render();if(!dialog.open)dialog.showModal();void load();}};
 }

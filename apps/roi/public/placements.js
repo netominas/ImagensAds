@@ -6,7 +6,7 @@ export function placementsPanel({api,readOnly=false}){
  const money=v=>v==null?'—':new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:2}).format(v),pct=v=>v==null?'—':new Intl.NumberFormat('pt-BR',{style:'percent',maximumFractionDigits:1}).format(v),date=v=>v?.split('-').reverse().join('/')||'';
  const status={deductions_pending:'Descontos pendentes',matched:'Vinculado',cost_only:'Sem receita vinculada',revenue_only:'Sem custo identificado',timezone:'Fusos diferentes',incomplete:'Coleta pendente',ambiguous_campaign:'Campanha ambígua',revenue_overlap:'Receita divergente',unmapped_type:'Formato ainda não conciliado'};
  const columns=[['placement','Placement'],['clicks','Cliques Ads'],['cost','Custo'],['revenue','Receita'],['profit','Lucro'],['roi','ROI %'],['ecpm','eCPM'],['pmr','PMR'],['cpc','CPC GAM'],['conversion_rate','Conversão'],['cost_per_conversion','Custo/Conv'],['ads_cpc','CPC Ads']];
- let context=null,key='',version=0,timer=null,busy=false,data=null,sort='cost',direction=-1,exportRows=[],ownPeriod=false,pendingEnsure=false;
+ let context=null,key='',version=0,timer=null,busy=false,data=null,sort='cost',direction=-1,exportRows=[],ownPeriod=false;
  const grid=placementGridPanel({api,readOnly});$('placements-grid').onclick=()=>{if(context)grid.open({...context,name:document.getElementById('campaign-detail-name').textContent});};
  stickyReportHeader(panel);$('placements-refresh').textContent=readOnly?'Recarregar placements':'Atualizar placements';
  function message(text){$('placements-message').textContent=text;}
@@ -21,27 +21,26 @@ export function placementsPanel({api,readOnly=false}){
   $('placements-sources').replaceChildren(...(data?.sources||[]).map(source=>{const li=document.createElement('li');li.textContent=source.name+' · '+(source.error|| (source.complete?'Coleta disponível':'Período ainda não importado'));return li;}));
  }
  function controls(){$('placements-refresh').disabled=busy||data?.job?.status==='running';}
- function schedule(delay=4000){clearTimeout(timer);if(context)timer=setTimeout(()=>void load(false),delay);}
- async function load(ensure=false){if(!context||busy)return;const current=version,scope={...context};busy=true;controls();try{
+ function schedule(delay=4000){clearTimeout(timer);if(context)timer=setTimeout(()=>void load(),delay);}
+ async function load(){if(!context||busy)return;const current=version,scope={...context};busy=true;controls();try{
   const response=await api('/placements?'+new URLSearchParams(scope));if(current!==version)return;data=response;render();message(data.job?.status==='running'?'Atualizando placements e receita em segundo plano…':(data.warnings||[]).join(' '));
-  if((ensure||pendingEnsure)&&!readOnly){if(data.job?.status==='running'){pendingEnsure=true;schedule();return;}pendingEnsure=false;const result=await api('/placements/ensure',scope);if(current!==version)return;if(result.id){message('Atualizando placements e receita em segundo plano…');schedule();}}
   if(data.job?.status==='running')schedule();
- }catch(e){if(current===version){message(e.message);if(/outra coleta de placements/.test(e.message)){pendingEnsure=true;schedule(15000);}}}finally{if(current===version){busy=false;controls();}}
+ }catch(e){if(current===version){message(e.message);}}finally{if(current===version){busy=false;controls();}}
  }
- $('placements-refresh').onclick=async()=>{if(!context||busy)return;if(readOnly){void load(false);return;}const current=version,scope={...context};busy=true;controls();try{await api('/placements/refresh',scope);if(current!==version)return;message('Atualizando placements e receita em segundo plano…');schedule();}catch(e){if(current===version)message(e.message);}finally{if(current===version){busy=false;controls();}}};
+ $('placements-refresh').onclick=async()=>{if(!context||busy)return;if(readOnly){void load();return;}const current=version,scope={...context};busy=true;controls();try{await api('/placements/refresh',scope);if(current!==version)return;message('Atualizando placements e receita em segundo plano…');schedule();}catch(e){if(current===version)message(e.message);}finally{if(current===version){busy=false;controls();}}};
  function dateInputs(scope){
   const today=placementPeriod('today').end;$('placements-start').max=today;$('placements-end').max=today;
   if(!scope)return;$('placements-start').value=scope.start;$('placements-end').value=scope.end;
   $('placements-preset').value=['today','yesterday','7'].find(p=>{const range=placementPeriod(p);return range.start===scope.start&&range.end===scope.end;})||'custom';
  }
- function changeContext(scope){context=scope?{...scope}:null;version++;clearTimeout(timer);data=null;busy=false;pendingEnsure=false;message('');render();controls();if(scope)void load(true);}
+ function changeContext(scope){context=scope?{...scope}:null;version++;clearTimeout(timer);data=null;busy=false;message('');render();controls();if(scope)void load();}
  function applyDates(){if(!context)return;try{const range=validatePlacementPeriod($('placements-start').value,$('placements-end').value);ownPeriod=true;dateInputs(range);changeContext({...context,...range});}catch(e){message(e.message);}}
  $('placements-dates').onsubmit=event=>{event.preventDefault();applyDates();};
  $('placements-preset').onchange=()=>{const preset=$('placements-preset').value;if(preset==='custom'){$('placements-start').focus();return;}dateInputs(placementPeriod(preset));applyDates();};
  for(const id of ['placements-start','placements-end'])$(id).oninput=()=>{$('placements-preset').value='custom';};
  $('placements-search').oninput=render;$('placements-filter').onchange=render;
  $('placements-export').onclick=()=>{if(!exportRows.length)return;const safe=value=>'"'+String(value??'').replace(/^[=+@-]/,"'$&").replaceAll('"','""')+'"',records=[columns.map(c=>c[1]),...exportRows.map(r=>columns.map(([k])=>r[k]))],blob=new Blob(['\ufeff'+records.map(r=>r.map(safe).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='roi-placements-'+context.campaign+'-'+context.start+'-'+context.end+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
- return {refresh:()=>context&&!busy?load(false):Promise.resolve(),show(scope){
+ return {refresh:()=>context&&!busy?load():Promise.resolve(),show(scope){
   panel.hidden=!scope;const next=scope?JSON.stringify(scope):'';if(next===key)return;key=next;
   const sameCampaign=scope&&context&&scope.account===context.account&&scope.campaign===context.campaign;
   // Parent refreshes must not overwrite a period chosen inside this block.
