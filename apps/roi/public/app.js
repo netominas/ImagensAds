@@ -13,7 +13,7 @@ import {gamMetrics} from './gam-metrics.js';
 import {campaignRows,dailyReport,campaignTypeLabel} from './campaign-report.js';
 import {requireAccess,secureFetch} from '/access.js';
 const viewer=await requireAccess();if(!viewer)throw Error('Sessão necessária.');
-const readOnly=viewer.role==='reader';document.body.classList.toggle('readonly',readOnly);document.querySelector('.users-nav').hidden=readOnly;
+const readOnly=viewer.role==='reader';document.body.classList.toggle('readonly',readOnly);document.querySelector('.users-nav').hidden=readOnly;document.querySelector('.script-report-nav').hidden=readOnly;
 window.addEventListener('storage',e=>{if(e.key==='adstudio-logout')location.replace('/login');});
 window.addEventListener('pageshow',e=>{if(e.persisted)location.reload();});
 const $=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

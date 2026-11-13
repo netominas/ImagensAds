@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Relatório Script · ROI</title>
+ <link rel="stylesheet" href="/apps/roi/style.css">
+</head>
+<body class="sidebar-hidden">
+ <main>
+  <header class="topbar"><a href="/apps/roi/">← Voltar ao relatório de ROI</a></header>
+  <div class="page">
+   <h1>Relatório Script</h1>
+   <p>Custos importados do script da MCC cruzados com a receita do Ad Manager já coletada pelo painel.</p>
+   <details class="data-card methodology">
+    <summary>Importar CSVs do script</summary>
+    <form id="script-import" class="payments-filters">
+     <label>ROI Ads - Piloto<input type="file" name="campaigns" accept=".csv,text/csv" required></label>
+     <label>ROI Ads - Conta<input type="file" name="account" accept=".csv,text/csv" required></label>
+     <label>ROI Ads - Detalhe diario<input type="file" name="daily" accept=".csv,text/csv" required></label>
+     <label>ROI Ads - Destinos<input type="file" name="destinations" accept=".csv,text/csv" required></label>
+     <button class="button primary" type="submit">Importar lote</button>
+    </form>
+   </details>
+   <form id="script-period" class="payments-filters">
+    <label>De<input name="start" type="date" required></label>
+    <label>Até<input name="end" type="date" required></label>
+    <button class="button secondary" type="submit">Consultar período</button>
+   </form>
+   <p id="script-status" role="status"></p>
+   <ul id="script-warnings"></ul>
+   <div class="payments-table-wrap">
+    <table class="payments-table">
+     <thead><tr><th>Campanha</th><th>Conta</th><th>Site</th><th>Custo</th><th>Receita</th><th>Lucro</th><th>ROI</th></tr></thead>
+     <tbody id="script-rows"></tbody>
+    </table>
+   </div>
+  </div>
+ </main>
+ <script type="module" src="/apps/roi/script-report.js"></script>
+</body>
+</html>

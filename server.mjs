@@ -77,6 +77,12 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       }
       const isUsers=originalPath==='/api/users'||originalPath.startsWith('/api/users/');
       if(isUsers){if(!session)return send(authJSON({error:'Entre novamente.'},401));if(session.role!=='admin')return send(authJSON({error:'Acesso exclusivo do administrador.'},403));}
+      if(originalPath==='/apps/roi/script'){
+        const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);if(denied)return send(redirect('/login'));
+        if(session?.role!=='admin')return send(authJSON({error:'Acesso exclusivo do administrador.'},403));
+        if(!['GET','HEAD'].includes(req.method))return send(authJSON({error:'Método não permitido.'},405));
+        return send(new Response(await readFile(new URL('./apps/roi/private/script-report.html',import.meta.url)),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store','Vary':'Cookie'}}));
+      }
       if(['/apps/roi','/apps/roi/','/apps/roi/sites','/apps/roi/vinculos','/apps/roi/redes','/apps/roi/pagamentos'].includes(originalPath)){
         const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);if(denied)return send(redirect('/login'));
         if(!['GET','HEAD'].includes(req.method))return send(authJSON({error:'Método não permitido.'},405));
@@ -118,7 +124,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       }
       let raw='';
       if(!['GET','HEAD'].includes(req.method)){
-        const chunks=[];let size=0;const limit=isData?29*1024*1024:isGoogle?21*1024*1024:64000;
+        const chunks=[];let size=0;const limit=isData?29*1024*1024:isGoogle?21*1024*1024:originalPath==='/apps/roi/api/script-report'&&session?.role==='admin'?8*1024*1024:64000;
         for await(const chunk of req){size+=chunk.length;if(size>limit){res.writeHead(413).end();return;}chunks.push(chunk);}raw=Buffer.concat(chunks).toString();
       }
       const request=new Request(url,{method:req.method,headers:req.headers,...(!['GET','HEAD'].includes(req.method)?{body:raw}:{})});
@@ -173,7 +179,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
         return send(new Response(await readFile(new URL('./apps/financas/public/'+asset,import.meta.url)),{headers:{'Content-Type':asset.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8','Cache-Control':'no-store'}}));
       }
       if(originalPath.startsWith('/apps/roi/')){
-        const asset=originalPath.slice('/apps/roi/'.length);if(!new Set(['app.js','style.css','campaign-report.js','campaign-quick-roi.js','campaign-changes.js','campaign-analysis.js','placements.js','placement-grid.js','roi-grid.js','budget-editor.js','recent-changes.js','gam-metrics.js','ads-metrics.js','payments.js','report-period.js','sticky-report.js','brand.svg']).has(asset))return send(authJSON({error:'Não encontrado.'},404));
+        const asset=originalPath.slice('/apps/roi/'.length);if(!new Set(['app.js','style.css','script-report.js','campaign-report.js','campaign-quick-roi.js','campaign-changes.js','campaign-analysis.js','placements.js','placement-grid.js','roi-grid.js','budget-editor.js','recent-changes.js','gam-metrics.js','ads-metrics.js','payments.js','report-period.js','sticky-report.js','brand.svg']).has(asset))return send(authJSON({error:'Não encontrado.'},404));
         return send(new Response(await readFile(new URL('./apps/roi/public/'+asset,import.meta.url)),{headers:{'Content-Type':asset.endsWith('.svg')?'image/svg+xml':asset.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8','Cache-Control':'no-store'}}));
       }
       if(originalPath.startsWith('/apps/google-ads/')){

@@ -18,6 +18,7 @@ import {discover} from '../google-ads/domain.mjs';
 import {createAdManager,dateRange} from './admanager.mjs';
 import {dollarRates,today} from './fx.mjs';
 import {costFacts} from './ads.mjs';
+import {importScriptReport} from './script-report.mjs';
 import {revenueFacts,site} from './model.mjs';
 const id=()=>randomBytes(16).toString('hex');
 function adsCollectionError(error){
@@ -163,6 +164,17 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   try{
    if(user?.role==='reader')return await readOnly(request,user);
    if(method==='GET'){
+    if(path==='/script-report'){
+     const start=url.searchParams.get('start'),end=url.searchParams.get('end');
+     dateRange(start,end);
+     if(end>today())throw new AdsError('A data final não pode estar no futuro.',{status:400});
+     const data=warehouse.meta('catalog')||{accounts:[],networks:[]};
+     const imported=db.prepare("SELECT DISTINCT source FROM roi_source_days WHERE kind='ads-script' AND day BETWEEN ? AND ?").all(start,end);
+     const accounts=imported.map(row=>row.source),networks=defaults(data).networks;
+     if(!accounts.length)return authJSON({rows:[],warnings:[],accounts:0});
+     const result=applyDeductions(warehouse.read({start,end,accounts,networks},links(),data,{adsKind:'ads-script'}),deductions.read());
+     return authJSON({rows:result.rows,warnings:result.warnings,accounts:accounts.length});
+    }
     if(path==='/campaign-quick-roi')return authJSON(campaignQuickROI(url.searchParams));
     if(path==='/deductions')return authJSON(deductions.read());
     if(path==='/roi-grid')return authJSON(await gridData({site:url.searchParams.get('site'),end:url.searchParams.get('end')},user));
@@ -185,6 +197,12 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
    if(!['POST','DELETE'].includes(method))return authJSON({error:'Método não permitido.'},405);
    if(!request.headers.get('content-type')?.startsWith('application/json'))return authJSON({error:'Envie JSON.'},415);
    let body;try{body=await request.json();}catch{throw new AdsError('JSON inválido.',{status:400});}if(!body||typeof body!=='object'||Array.isArray(body))throw new AdsError('Dados inválidos.',{status:400});
+   if(path==='/script-report'&&method==='POST'){
+    const data=warehouse.meta('catalog')||{accounts:[]};
+    const batch=await importScriptReport(body,data.accounts);
+    warehouse.saveSource('ads-script',batch.account,batch.start,batch.end,batch.facts,{collectedAt:batch.captured});
+    return authJSON({account:batch.account,start:batch.start,end:batch.end,records:batch.facts.length});
+   }
    if(path==='/deductions'&&method==='POST'){const saved=deductions.save(body,(await catalog()).networks,user?.email||'administrator');warehouse.touch();return authJSON(saved);}
    if((path==='/roi-grid/ensure'||path==='/ensure')&&method==='POST')return authJSON({id:null},202);
    if(path==='/roi-grid/refresh'&&method==='POST'){const {scope}=await gridScope(body);if(active)return authJSON({id:runningJob()?.id||null},202);const plan=warehouse.missingRanges(scope);if(!plan.length)return authJSON({id:null});return authJSON({id:launch(scope,{mode:'on-demand',plan}).id},202);}
