@@ -20,6 +20,14 @@ import {dollarRates,today} from './fx.mjs';
 import {costFacts} from './ads.mjs';
 import {revenueFacts,site} from './model.mjs';
 const id=()=>randomBytes(16).toString('hex');
+function adsCollectionError(error){
+ if(error instanceof AdsError){
+  if(error.details?.some(detail=>detail.code?.includes('"quotaError"')))return 'A API do Google Ads atingiu um limite de uso.';
+  if(error.status===403)return 'A API do Google Ads recusou o acesso à conta.';
+  if(error.status===422)return 'A API do Google Ads rejeitou a consulta.';
+ }
+ return 'Não foi possível consultar a conta Google Ads.';
+}
 export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClient({env}),admanager=createAdManager({env}),rates=dollarRates,loadCosts=costFacts,autoSync=env.ROI_AUTO_SYNC==='true',generateAnalysis}={}){
  const db=storage.db;let active=false,catalogPending,networksPending;
  db.exec(`CREATE TABLE IF NOT EXISTS roi_runs (id TEXT PRIMARY KEY,status TEXT NOT NULL,start TEXT NOT NULL,end TEXT NOT NULL,config TEXT NOT NULL,result TEXT,progress TEXT NOT NULL,error TEXT,created TEXT NOT NULL,finished TEXT);
@@ -70,7 +78,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   let data=warehouse.meta('catalog')||{accounts:[],networks:[],warnings:[]},catalogError='';if(!plan)try{progress('Atualizando catálogo de contas e redes…');data=await refreshCatalog();}catch{catalogError='O catálogo não pôde ser atualizado; foram mantidas as fontes já conhecidas.';}
   const tasks=plan||[...scope.accounts.map(source=>({kind:'ads',source,start:scope.start,end:scope.end})),...scope.networks.map(source=>({kind:'gam',source,start:scope.start,end:scope.end}))];
   const ads=tasks.filter(t=>t.kind==='ads'),gam=tasks.filter(t=>t.kind==='gam');let cursor=0,done=0;
-  const collectAds=async()=>{for(;;){const task=ads[cursor++];if(!task)break;const account=data.accounts.find(a=>a.id===task.source);try{if(!account)throw Error('Fonte indisponível');const facts=await loadCosts(google,account,task.start,task.end);warehouse.saveSource('ads',task.source,task.start,task.end,facts);}catch{warehouse.failSource('ads',task.source,task.start,task.end,'Não foi possível consultar a conta Google Ads.');}done++;progress(`Google Ads: ${done} de ${ads.length} coletas concluídas`);}};
+  const collectAds=async()=>{for(;;){const task=ads[cursor++];if(!task)break;const account=data.accounts.find(a=>a.id===task.source);try{if(!account)throw Error('Fonte indisponível');const facts=await loadCosts(google,account,task.start,task.end);warehouse.saveSource('ads',task.source,task.start,task.end,facts);}catch(error){warehouse.failSource('ads',task.source,task.start,task.end,adsCollectionError(error));}done++;progress(`Google Ads: ${done} de ${ads.length} coletas concluídas`);}};
   const outcomes=await Promise.allSettled(Array.from({length:Math.min(3,ads.length)},collectAds));
   if(outcomes.some(outcome=>outcome.status==='rejected'))throw Error('Falha ao registrar a coleta do Google Ads.');
   const keysCache=new Map();
