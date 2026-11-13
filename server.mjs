@@ -90,7 +90,13 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
         return send(new Response(await readFile(new URL('./apps/roi/private/index.html',import.meta.url)),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store','Vary':'Cookie'}}));
       }
       const isROI=originalPath.startsWith('/apps/roi/api/');
-      if(isROI){const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);if(denied)return send(denied);if(!roiAPI)return send(authJSON({error:'Persistência indisponível.'},503));}
+      const scriptIngest=originalPath==='/apps/roi/api/script-report/ingest';
+      let scriptAccount;
+      if(scriptIngest){
+        if(req.method!=='POST')return send(authJSON({error:'Método não permitido.'},405));
+        scriptAccount=roiAPI?.scriptAccount(req.headers.authorization);
+        if(!scriptAccount)return send(authJSON({error:'Chave de importação inválida.'},401));
+      }else if(isROI){const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);if(denied)return send(denied);if(!roiAPI)return send(authJSON({error:'Persistência indisponível.'},503));}
       if(['/apps/google-ads','/apps/google-ads/','/apps/google-ads/criar','/apps/google-ads/criar/'].includes(originalPath)){
         const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);
         if(denied)return send(redirect('/login'));
@@ -124,12 +130,13 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       }
       let raw='';
       if(!['GET','HEAD'].includes(req.method)){
-        const chunks=[];let size=0;const limit=isData?29*1024*1024:isGoogle?21*1024*1024:originalPath==='/apps/roi/api/script-report'&&session?.role==='admin'?8*1024*1024:64000;
+        const chunks=[];let size=0;const limit=isData?29*1024*1024:isGoogle?21*1024*1024:scriptIngest||(originalPath==='/apps/roi/api/script-report'&&session?.role==='admin')?8*1024*1024:64000;
         for await(const chunk of req){size+=chunk.length;if(size>limit){res.writeHead(413).end();return;}chunks.push(chunk);}raw=Buffer.concat(chunks).toString();
       }
       const request=new Request(url,{method:req.method,headers:req.headers,...(!['GET','HEAD'].includes(req.method)?{body:raw}:{})});
       if(isFinance)return send(await financeAPI(request));
       if(isUsers)return send(users?await users.api(request,session,{catalog:roiAPI.userCatalog,campaigns:roiAPI.userCampaigns}):authJSON({error:'Persistência indisponível.'},503));
+      if(scriptIngest)return send(await roiAPI.receiveScriptBatch(request,scriptAccount));
       if(isROI)return send(await roiAPI(request,session));
       if(isGoogle)return send(await googleAPI(request));
       if(url.pathname==='/api/activate'){

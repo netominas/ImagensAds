@@ -13,6 +13,15 @@
    <h1>Relatório Script</h1>
    <p>Custos importados do script da MCC cruzados com a receita do Ad Manager já coletada pelo painel.</p>
    <details class="data-card methodology">
+    <summary>Configurar envio automático</summary>
+    <form id="script-token" class="payments-filters">
+     <label>ID da conta Google Ads<input name="account" inputmode="numeric" pattern="[0-9]{10}" required></label>
+     <button class="button secondary" type="submit">Gerar nova chave</button>
+     <label id="script-token-result" hidden>Chave para o script<input id="script-token-value" readonly></label>
+    </form>
+    <p>Gerar uma nova chave substitui a chave anterior da conta.</p>
+   </details>
+   <details class="data-card methodology">
     <summary>Importar CSVs do script</summary>
     <form id="script-import" class="payments-filters">
      <label>ROI Ads - Piloto<input type="file" name="campaigns" accept=".csv,text/csv" required></label>

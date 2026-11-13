@@ -57,4 +57,14 @@ upload.onsubmit=event=>{
   await report('Lote importado. ');
  });
 };
+$('script-token').onsubmit=event=>{
+ event.preventDefault();
+ const {account}=Object.fromEntries(new FormData(event.currentTarget));
+ void run(async()=>{
+  const {token}=await request('/token',{account});
+  $('script-token-value').value=token;
+  $('script-token-result').hidden=false;
+  status.textContent='Chave gerada para a conta '+account+'.';
+ });
+};
 void run(()=>report());

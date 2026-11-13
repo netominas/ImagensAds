@@ -11,7 +11,7 @@ import {createCampaignChanges,changeTypes} from './campaign-changes.mjs';
 import {createGoogleAdsLinks} from './google-ads-links.mjs';
 import {createROIWarehouse,shiftDay} from './warehouse.mjs';
 import {createROIScheduler} from './scheduler.mjs';
-import {randomBytes} from 'node:crypto';
+import {createHash,randomBytes} from 'node:crypto';
 import {authJSON,sameOrigin} from '../../lib/auth.mjs';
 import {AdsError,createGoogleAdsClient} from '../google-ads/client.mjs';
 import {discover} from '../google-ads/domain.mjs';
@@ -21,6 +21,7 @@ import {costFacts} from './ads.mjs';
 import {importScriptReport} from './script-report.mjs';
 import {revenueFacts,site} from './model.mjs';
 const id=()=>randomBytes(16).toString('hex');
+const hashScriptToken=token=>createHash('sha256').update(token).digest('hex');
 function adsCollectionError(error){
  if(error instanceof AdsError){
   if(error.details?.some(detail=>detail.code?.includes('"quotaError"')))return 'A API do Google Ads atingiu um limite de uso.';
@@ -31,6 +32,7 @@ function adsCollectionError(error){
 }
 export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClient({env}),admanager=createAdManager({env}),rates=dollarRates,loadCosts=costFacts,autoSync=env.ROI_AUTO_SYNC==='true',generateAnalysis}={}){
  const db=storage.db;let active=false,catalogPending,networksPending;
+ db.exec('CREATE TABLE IF NOT EXISTS roi_script_tokens(account TEXT PRIMARY KEY, digest TEXT NOT NULL UNIQUE)');
  db.exec(`CREATE TABLE IF NOT EXISTS roi_runs (id TEXT PRIMARY KEY,status TEXT NOT NULL,start TEXT NOT NULL,end TEXT NOT NULL,config TEXT NOT NULL,result TEXT,progress TEXT NOT NULL,error TEXT,created TEXT NOT NULL,finished TEXT);
  CREATE TABLE IF NOT EXISTS roi_links (id TEXT PRIMARY KEY,network TEXT NOT NULL,site TEXT NOT NULL,utm TEXT NOT NULL,account TEXT NOT NULL,campaign TEXT NOT NULL,UNIQUE(network,site,utm));
  CREATE TABLE IF NOT EXISTS roi_settings (id INTEGER PRIMARY KEY CHECK(id=1),data TEXT NOT NULL);`);
@@ -158,6 +160,13 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   }
   return denied();
  }
+ async function saveScriptBatch(body,allowedAccount){
+  const data=warehouse.meta('catalog')||{accounts:[]};
+  const accounts=allowedAccount?data.accounts.filter(account=>account.id===allowedAccount):data.accounts;
+  const batch=await importScriptReport(body,accounts);
+  warehouse.saveSource('ads-script',batch.account,batch.start,batch.end,batch.facts,{collectedAt:batch.captured});
+  return authJSON({account:batch.account,start:batch.start,end:batch.end,records:batch.facts.length});
+ }
  const api=async (request,user)=>{
   const url=new URL(request.url),path=url.pathname.slice('/apps/roi/api'.length),method=request.method;
   if(!['GET','HEAD'].includes(method)&&!sameOrigin(request))return authJSON({error:'Origem não permitida.'},403);
@@ -197,11 +206,14 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
    if(!['POST','DELETE'].includes(method))return authJSON({error:'Método não permitido.'},405);
    if(!request.headers.get('content-type')?.startsWith('application/json'))return authJSON({error:'Envie JSON.'},415);
    let body;try{body=await request.json();}catch{throw new AdsError('JSON inválido.',{status:400});}if(!body||typeof body!=='object'||Array.isArray(body))throw new AdsError('Dados inválidos.',{status:400});
-   if(path==='/script-report'&&method==='POST'){
-    const data=warehouse.meta('catalog')||{accounts:[]};
-    const batch=await importScriptReport(body,data.accounts);
-    warehouse.saveSource('ads-script',batch.account,batch.start,batch.end,batch.facts,{collectedAt:batch.captured});
-    return authJSON({account:batch.account,start:batch.start,end:batch.end,records:batch.facts.length});
+   if(path==='/script-report'&&method==='POST')return await saveScriptBatch(body);
+   if(path==='/script-report/token'&&method==='POST'){
+    if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);
+    const account=(warehouse.meta('catalog')?.accounts||[]).find(item=>item.id===body.account);
+    if(!account)throw new AdsError('Selecione uma conta cadastrada no ROI.',{status:400});
+    const token=randomBytes(32).toString('hex');
+    db.prepare('INSERT OR REPLACE INTO roi_script_tokens VALUES (?,?)').run(account.id,hashScriptToken(token));
+    return authJSON({token});
    }
    if(path==='/deductions'&&method==='POST'){const saved=deductions.save(body,(await catalog()).networks,user?.email||'administrator');warehouse.touch();return authJSON(saved);}
    if((path==='/roi-grid/ensure'||path==='/ensure')&&method==='POST')return authJSON({id:null},202);
@@ -230,6 +242,15 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   }catch(e){return authJSON({error:e instanceof AdsError?e.message:'Não foi possível concluir a consulta.'},e instanceof AdsError?e.status:502);}
  };
  api.userCatalog=catalog;
+ api.scriptAccount=authorization=>{
+  const token=/^Bearer ([a-f0-9]{64})$/.exec(authorization||'')?.[1];
+  return token?db.prepare('SELECT account FROM roi_script_tokens WHERE digest=?').get(hashScriptToken(token))?.account:null;
+ };
+ api.receiveScriptBatch=async(request,account)=>{
+  if(!request.headers.get('content-type')?.startsWith('application/json'))return authJSON({error:'Envie JSON.'},415);
+  try{return await saveScriptBatch(await request.json(),account);}
+  catch(error){return authJSON({error:error instanceof AdsError?error.message:'Não foi possível importar o lote.'},error instanceof AdsError?error.status:error instanceof SyntaxError?400:500);}
+ };
  api.userCampaigns=async account=>{
   if(typeof account!=='string'||!/^\d{10}$/.test(account))throw new AdsError('Conta inválida.',{status:400});const a=(await catalog()).accounts.find(a=>a.id===account);if(!a)throw new AdsError('Conta indisponível.',{status:403});
   const rows=await google.search(a.id,"SELECT campaign.id, campaign.name, campaign.advertising_channel_type, campaign.status FROM campaign WHERE campaign.status != 'REMOVED'",a.mcc);

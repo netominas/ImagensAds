@@ -2,6 +2,9 @@
 const SPREADSHEET_ID = '';
 // Cada conta adicional pode usar uma planilha própria sob a mesma MCC.
 const ACCOUNT_SHEETS = {'3523949327': SPREADSHEET_ID};
+// Cole aqui a chave gerada no Relatório Script para cada conta.
+const ACCOUNT_UPLOAD_KEYS = {};
+const REPORT_ENDPOINT = 'https://app.arkaconteudo.com/apps/roi/api/script-report/ingest';
 const TAB_NAME = 'ROI Ads - Piloto';
 const METRIC_FIELDS = 'metrics.cost_micros, metrics.clicks, metrics.interactions, metrics.conversions, metrics.average_cpc, metrics.conversions_from_interactions_rate, metrics.cost_per_conversion';
 const TRACKING_HEADERS = ['Modelo de rastreamento', 'Sufixo da URL final', 'Parâmetros personalizados (JSON)'];
@@ -22,11 +25,12 @@ function trackingValues(resource) {
 }
 
 function main() {
-  const accountIds = Object.keys(ACCOUNT_SHEETS);
-  if (accountIds.some(id => !/^\d{10}$/.test(id) || !ACCOUNT_SHEETS[id])) {
-    throw new Error('Informe uma planilha para cada conta configurada.');
+  const accountIds = [...new Set([...Object.keys(ACCOUNT_SHEETS), ...Object.keys(ACCOUNT_UPLOAD_KEYS)])];
+  if (accountIds.some(id => !/^\d{10}$/.test(id) || (!ACCOUNT_SHEETS[id] && !ACCOUNT_UPLOAD_KEYS[id]))) {
+    throw new Error('Informe uma planilha ou chave de envio para cada conta configurada.');
   }
-  if (new Set(Object.values(ACCOUNT_SHEETS)).size !== accountIds.length) {
+  const sheets = Object.values(ACCOUNT_SHEETS).filter(Boolean);
+  if (new Set(sheets).size !== sheets.length) {
     throw new Error('Use uma planilha diferente para cada conta.');
   }
   const accounts = AdsManagerApp.accounts().withIds(accountIds).get();
@@ -119,11 +123,27 @@ function collectAccount(account, accountId, spreadsheetId) {
     collect(`SELECT ${assetFields} FROM asset_group WHERE campaign.id IN (${[...pmaxIds].join(',')})`, 'Grupo PMax', configured, false);
   }
 
-  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-  writeReport(spreadsheet, TAB_NAME, rows, 3);
-  writeReport(spreadsheet, 'ROI Ads - Conta', accountRows, 1);
-  writeReport(spreadsheet, 'ROI Ads - Detalhe diario', daily, 6);
-  writeReport(spreadsheet, 'ROI Ads - Destinos', configured, 6);
+  const token = ACCOUNT_UPLOAD_KEYS[accountId];
+  if (token) {
+    const batch = {campaigns: rows, account: accountRows, daily, destinations: configured};
+    const payload = Object.fromEntries(Object.entries(batch).map(([key, table]) => [
+      key, table.map(row => row.map(value => '"' + String(value ?? '').replace(/"/g, '""') + '"').join(',')).join('\n')
+    ]));
+    const response = UrlFetchApp.fetch(REPORT_ENDPOINT, {
+      method: 'post', contentType: 'application/json', headers: {Authorization: 'Bearer ' + token},
+      payload: JSON.stringify(payload), muteHttpExceptions: true, followRedirects: false
+    });
+    if (response.getResponseCode() !== 200) {
+      throw new Error('O painel recusou a importação (HTTP ' + response.getResponseCode() + ').');
+    }
+  }
+  if (spreadsheetId) {
+    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    writeReport(spreadsheet, TAB_NAME, rows, 3);
+    writeReport(spreadsheet, 'ROI Ads - Conta', accountRows, 1);
+    writeReport(spreadsheet, 'ROI Ads - Detalhe diario', daily, 6);
+    writeReport(spreadsheet, 'ROI Ads - Destinos', configured, 6);
+  }
   console.log(`Conta ${accountId}: ${rows.length - 1} totais, ${daily.length - 1} linhas de detalhe e ${configured.length - 1} destinos configurados. Período: ${start} a ${end} (${timezone}).`);
 }
 
