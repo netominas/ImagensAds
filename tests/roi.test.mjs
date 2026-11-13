@@ -70,15 +70,13 @@ test('ROI shares login, blocks private files and cross-origin changes, persists 
  const dir=await mkdtemp(join(tmpdir(),'ak-roi-'));let storage=openStorage(dir,'9'.repeat(64));
  await storage.saveKeys({gemini:'private-fake-key-keep'});await storage.saveSettings({templates:[{id:'keep',prompt:'Manter'}],models:{}});storage.addImage({id:'keep-image'},'image/png',Buffer.from([1]));
  const google={configured:()=>true,accessible:async()=>({resourceNames:['customers/'+account]}),search:async(cid,q)=>q.includes('metrics.optimization_score_url')?[{customer:{id:account},metrics:{optimizationScoreUrl:'https://adwords.google.com/aw/recommendations?ocid=7654321&authuser=3'}}]:[{customer:{id:account,descriptiveName:'Conta',manager:false,status:'ENABLED',currencyCode:'BRL',timeZone:'America/Sao_Paulo'}}]};
- const gamStarted=Promise.withResolvers();
- const gam={networks:async()=>[{id:'1234',name:'Rede',currency:'BRL',timezone:'America/Sao_Paulo'}],keys:async()=>[{id:'1',name:'utm_campaign',reportableType:'ON'}],report:async()=>{gamStarted.resolve();return {mode:'CUSTOM_CRITERIA',key:'1',report_id:'77',rows:[csv()]};}};
+ const collectionOrder=[];
+ const gam={networks:async()=>[{id:'1234',name:'Rede',currency:'BRL',timezone:'America/Sao_Paulo'}],keys:async()=>{collectionOrder.push('gam-start');return [{id:'1',name:'utm_campaign',reportableType:'ON'}];},report:async()=>({mode:'CUSTOM_CRITERIA',key:'1',report_id:'77',rows:[csv()]})};
  const env={ADMIN_EMAIL:'roi@example.test',ADMIN_PASSWORD_HASH:await hashPassword('roi-test-password-only')};
  const loadCosts=async()=>{
-  let timer;
-  try{
-   await Promise.race([gamStarted.promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('GAM did not start while Ads was running')),2000);})]);
-   return [cost({final_urls:['https://exemplo.com.br/pagina/']})];
-  }finally{clearTimeout(timer);}
+  await new Promise(resolve=>setImmediate(resolve));
+  collectionOrder.push('ads-finish');
+  return [cost({final_urls:['https://exemplo.com.br/pagina/']})];
  };
  const server=createAppServer({env,storage,authStore:storage.store('auth'),googleAds:google,roiOptions:{admanager:gam,loadCosts,rates:async()=>({})}});await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port,prefix='/apps/roi/api';let cookie,run;
  const request=(path,body,origin=base)=>fetch(base+path,{method:body?'POST':'GET',redirect:'manual',headers:{'Content-Type':'application/json',Origin:origin,...(cookie?{Cookie:cookie}:{})},...(body?{body:JSON.stringify(body)}:{})});
@@ -96,6 +94,7 @@ test('ROI shares login, blocks private files and cross-origin changes, persists 
   const r=await request(prefix+'/sync',{start:date,end:date,accounts:[account],networks:['1234']});assert.equal(r.status,202);const job=await r.json();
   for(let attempt=0;attempt<50;attempt++){run=await(await request(prefix+'/run?id='+job.id)).json();if(run.status!=='running')break;await new Promise(r=>setTimeout(r,5));}
   assert.equal(run.status,'done');assert.equal(run.result.totals.profit,5);assert.equal(run.result.rows[0].name,'Campanha');assert.equal(run.result.sites[0].site,'exemplo.com.br');assert.equal(run.result.revenue_label,'Receita estimada Ad Exchange');
+  assert.deepEqual(collectionOrder,['ads-finish','gam-start']);
   assert.deepEqual(run.result.rows[0].final_urls,['https://exemplo.com.br/pagina/']);
   const rule={network:'1234',site:'exemplo.com.br',utm:'promo',account,campaign:'111'};
   assert.equal((await request(prefix+'/links',{...rule,campaign:'invalid'})).status,400);

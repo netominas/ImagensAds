@@ -71,16 +71,14 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   const tasks=plan||[...scope.accounts.map(source=>({kind:'ads',source,start:scope.start,end:scope.end})),...scope.networks.map(source=>({kind:'gam',source,start:scope.start,end:scope.end}))];
   const ads=tasks.filter(t=>t.kind==='ads'),gam=tasks.filter(t=>t.kind==='gam');let cursor=0,done=0;
   const collectAds=async()=>{for(;;){const task=ads[cursor++];if(!task)break;const account=data.accounts.find(a=>a.id===task.source);try{if(!account)throw Error('Fonte indisponível');const facts=await loadCosts(google,account,task.start,task.end);warehouse.saveSource('ads',task.source,task.start,task.end,facts);}catch{warehouse.failSource('ads',task.source,task.start,task.end,'Não foi possível consultar a conta Google Ads.');}done++;progress(`Google Ads: ${done} de ${ads.length} coletas concluídas`);}};
-  const collectGam=async()=>{
-   const keysCache=new Map();
-   for(const task of gam){const network=data.networks.find(n=>n.id===task.source);try{
+  const outcomes=await Promise.allSettled(Array.from({length:Math.min(3,ads.length)},collectAds));
+  if(outcomes.some(outcome=>outcome.status==='rejected'))throw Error('Falha ao registrar a coleta do Google Ads.');
+  const keysCache=new Map();
+  for(const task of gam){const network=data.networks.find(n=>n.id===task.source);try{
    if(!network)throw new AdsError('Rede indisponível.');progress('Ad Manager: '+network.name);
    if(!keysCache.has(network.id))keysCache.set(network.id,await admanager.keys(network.id));const key=keysCache.get(network.id).find(k=>k.name==='utm_campaign');if(!key||key.reportableType==='OFF')throw new AdsError('utm_campaign não está habilitada nesta rede.');
    const report=await admanager.report(network.id,{start:task.start,end:task.end,key:key.id,mode:String(key.reportableType).includes('DIMENSION')?'CUSTOM_DIMENSION':'CUSTOM_CRITERIA',progress:m=>progress(network.name+': '+m)});warehouse.saveSource('gam',task.source,task.start,task.end,revenueFacts(report,network));
   }catch(e){warehouse.failSource('gam',task.source,task.start,task.end,e instanceof AdsError?e.message:'Não foi possível consultar a rede Ad Manager.');}}
-  };
-  const outcomes=await Promise.allSettled([...Array.from({length:Math.min(3,ads.length)},collectAds),collectGam()]);
-  if(outcomes.some(outcome=>outcome.status==='rejected'))throw Error('Falha ao registrar a coleta.');
   let fxError='';try{progress('Atualizando cotação diária…');warehouse.saveRates(await rates(scope.start,scope.end));}catch{fxError='Não foi possível atualizar o câmbio. As cotações válidas armazenadas foram preservadas.';}
   const result=warehouse.read(scope,rules,data);if(catalogError)result.warnings.push(catalogError);if(fxError)result.warnings.push(fxError);
   const manual=getRun(run).config.mode==='manual',stored=manual?result:{database:true,data_coverage:result.data_coverage,warnings:result.warnings,updated_at:result.updated_at,sources:result.sources};warehouse.putMeta('collection_warnings',[catalogError,fxError].filter(Boolean));
