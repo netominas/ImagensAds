@@ -1,5 +1,6 @@
 import {applyDeductions,createDeductionSettings} from './deductions.mjs';
 import {gridPeriod,roiGrid} from './roi-grid.mjs';
+import {campaignRows,dailyReport} from './public/campaign-report.js';
 import {createPlacements} from './placements.mjs';
 import {createCampaignAnalysis} from './campaign-analysis.mjs';
 import {canCampaign,canAccount} from '../../lib/users.mjs';
@@ -85,10 +86,30 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
  const scheduler=createROIScheduler({enabled:autoSync,read:()=>warehouse.meta('auto_sync'),write:value=>warehouse.putMeta('auto_sync',value),isBusy:()=>active,day:today,run:async range=>{const data=await catalog(),selected=defaults(data);if(!selected.accounts.length||!selected.networks.length)throw Error('Configure as fontes');if(!config())db.prepare('INSERT OR REPLACE INTO roi_settings VALUES (1,?)').run(JSON.stringify(selected));const job=launch({start:range.start,end:range.end,...selected},{mode:range.deep?'automatic-deep':'automatic'});return await job.promise;}});
  async function gridScope(body){const range=gridPeriod(body.site,body.end||today()),data=await catalog();return {...range,scope:scopeFrom({...range,...defaults(data)},data)};}
  async function gridData(body,user){const {scope,...range}=await gridScope(body),days=[];for(let date=range.start;date<=range.end;date=shiftDay(date,1))days.push({date,result:databaseReport({...scope,start:date,end:date}).result});return {deductions:days[0]?.result.deductions,...roiGrid({...range,days,...(user?.role==='reader'?{allowed:r=>canCampaign(user,r.account,r.campaign)}:{})}),importing:user?.role==='reader'?false:Boolean(runningJob()),can_import:user?.role!=='reader'};}
+ function campaignQuickROI(params){
+  const account=params.get('account'),campaign=params.get('campaign'),site=params.get('site')||'';
+  if(!/^\d{10}$/.test(account||'')||!/^\d{1,20}$/.test(campaign||''))throw new AdsError('Conta ou campanha inválida.',{status:400});
+  const end=today(),start=shiftDay(end,-6);
+  const selected=defaults(warehouse.meta('catalog')||{accounts:[],networks:[]});
+  const days=[];
+  let found=false;
+  for(let date=start;date<=end;date=shiftDay(date,1)){
+   const result=databaseReport({...selected,start:date,end:date}).result;
+   const rows=campaignRows(result,{account,campaign,site});
+   const [day]=dailyReport(rows,result.rates,date,date);
+   if(day)found=true;
+   days.push({date,cost:day?.cost??null,revenue:day?.revenue??null,profit:day?.profit??null,roi:day?.roi??null});
+  }
+  return {start,end,days:found?days:[]};
+ }
  async function readOnly(request,user){
   const url=new URL(request.url),path=url.pathname.slice('/apps/roi/api'.length);
   const denied=()=>authJSON({error:'Você não tem permissão para esta operação.'},403);
   if(request.method!=='GET')return denied();
+  if(path==='/campaign-quick-roi'){
+   if(!canCampaign(user,url.searchParams.get('account'),url.searchParams.get('campaign')))return denied();
+   return authJSON(campaignQuickROI(url.searchParams));
+  }
   if(path==='/catalog'){
    const data=await catalog(),accounts=data.accounts.filter(a=>canAccount(user,a.id)).map(({id,name,status,currency})=>({id,name,status,currency}));
    return authJSON({accounts,networks:[],warnings:[],settings:{accounts:accounts.map(a=>a.id),networks:[]},links:[],database:true,readonly:true});
@@ -124,6 +145,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   try{
    if(user?.role==='reader')return await readOnly(request,user);
    if(method==='GET'){
+    if(path==='/campaign-quick-roi')return authJSON(campaignQuickROI(url.searchParams));
     if(path==='/deductions')return authJSON(deductions.read());
     if(path==='/roi-grid')return authJSON(await gridData({site:url.searchParams.get('site'),end:url.searchParams.get('end')},user));
     if(path==='/placement-grid')return authJSON(await placements.grid(Object.fromEntries(['account','campaign','end'].map(k=>[k,url.searchParams.get(k)]))));

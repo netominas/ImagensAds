@@ -7,6 +7,7 @@ import {openStorage} from '../lib/persistent.mjs';
 import {createAppServer} from '../server.mjs';
 import {hashPassword} from '../lib/auth.mjs';
 import {createROIWarehouse} from '../apps/roi/warehouse.mjs';
+import {today} from '../apps/roi/fx.mjs';
 import {canAccount,canCampaign} from '../lib/users.mjs';
 
 test('read-only permissions distinguish entire accounts from explicit campaign IDs and deny missing scopes',()=>{
@@ -17,7 +18,7 @@ test('read-only permissions distinguish entire accounts from explicit campaign I
 });
 
 test('users persist, isolate ROI including totals and exports, revoke sessions and cannot reach admin or mutation endpoints',async()=>{
- const dir=await mkdtemp(join(tmpdir(),'ak-users-')),storage=openStorage(dir,'8'.repeat(64)),account='1234567890',other='9876543210',date='2026-10-28';
+ const dir=await mkdtemp(join(tmpdir(),'ak-users-')),storage=openStorage(dir,'8'.repeat(64)),account='1234567890',other='9876543210',date=today();
  const env={ADMIN_EMAIL:'admin@example.test',ADMIN_PASSWORD_HASH:await hashPassword('admin-users-test-password')};let mutationCalls=0;
  const google={configured:()=>true,search:async(id,q)=>{
   if(q.includes('campaign_budget.amount_micros'))return ['11','12','13'].map(id=>({campaign:{id,advertisingChannelType:'SEARCH'},customer:{currencyCode:'BRL'},campaignBudget:{resourceName:`customers/${account}/campaignBudgets/7`,period:'DAILY',amountMicros:'10000000'}}));
@@ -62,6 +63,12 @@ test('users persist, isolate ROI including totals and exports, revoke sessions a
   assert.ok(!serialized.includes('SEGREDO'));assert.deepEqual(report.result.rows.map(r=>r.campaign),['11','12']);assert.equal(report.result.rows[1].ambiguous,true);assert.equal(report.result.rows[1].revenue,null);
   assert.equal(report.result.totals.cost,10);assert.equal(report.result.totals.revenue,20);assert.equal(report.result.totals.profit,10);assert.equal(report.result.sites[0].campaigns,2);assert.deepEqual(report.result.pending,[]);
   assert.equal((await request(reportPath+'&campaign=13&account='+account)).status,403);assert.equal((await request(reportPath.replace(account,other))).status,403);
+  const quickPath='/apps/roi/api/campaign-quick-roi?account='+account+'&site=teste.com.br&campaign=';
+  assert.equal((await request(quickPath+'13')).status,403);
+  const quick=await (await request(quickPath+'11')).json();
+  assert.equal(quick.days.length,7);
+  assert.deepEqual(quick.days.at(-1),{date,cost:10,revenue:20,profit:10,roi:1});
+  assert.ok(quick.days.slice(0,-1).every(day=>day.cost===null&&day.roi===null));
   const budgets=await(await request('/apps/roi/api/campaign-budgets?accounts='+account)).json();assert.deepEqual(budgets.items.map(r=>r.campaign),['11','12']);assert.equal(budgets.items[0].resource,undefined);
   for(const path of ['/apps/roi/api/run?id='+'a'.repeat(32),'/apps/roi/api/budget?account='+account+'&campaign=13','/apps/roi/api/budget-operation?id='+'a'.repeat(32),'/apps/roi/api/payments','/apps/roi/api/campaign-changes?account='+account+'&campaign=13'])assert.equal((await request(path)).status,403,path);
   for(const path of ['/apps/roi/api/budget-preview','/apps/roi/api/budget-apply','/apps/roi/api/campaign-changes','/apps/roi/api/sync','/apps/roi/api/ensure','/apps/roi/api/settings','/apps/roi/api/links','/apps/roi/api/payments/refresh','/apps/google-ads/api/drafts/new','/.netlify/functions/generate-background'])assert.equal((await request(path,{account,campaign:'11'})).status,403,path);
