@@ -11,6 +11,7 @@ const saoPauloHour = new Intl.DateTimeFormat('sv-SE',{
 });
 
 export function createPlacements(db,{google,admanager,catalog,settings,warehouse,baseline,loadRates,autoSync=false,isBusy=()=>false,clock=()=>Date.now()}={}){
+ const isAutoEnabled=()=>typeof autoSync==="function"?autoSync():autoSync;
  let active=false,timer,initial,stopped=false;
  db.exec(`CREATE TABLE IF NOT EXISTS roi_placement_days(kind TEXT NOT NULL,source TEXT NOT NULL,day TEXT NOT NULL,data TEXT,updated TEXT,error TEXT,last_attempt TEXT NOT NULL,PRIMARY KEY(kind,source,day));
  CREATE TABLE IF NOT EXISTS roi_placement_jobs(id TEXT PRIMARY KEY,account TEXT NOT NULL,campaign TEXT NOT NULL,start TEXT NOT NULL,end TEXT NOT NULL,status TEXT NOT NULL,progress TEXT NOT NULL,error TEXT,created TEXT NOT NULL,finished TEXT);
@@ -79,7 +80,7 @@ export function createPlacements(db,{google,admanager,catalog,settings,warehouse
   void collect(id,body,account,networks,force);return {id};
  }
  async function tick(){
-  if(!autoSync||stopped||active||isBusy())return;
+  if(!isAutoEnabled()||stopped||active||isBusy())return;
   const [day,hour]=saoPauloHour.format(clock()).split(' ');
   if(hour!=='05')return;
   const cutoff=new Date(day+'T05:00:00-03:00').toISOString();
@@ -89,5 +90,5 @@ export function createPlacements(db,{google,admanager,catalog,settings,warehouse
   await launch({...campaign,start:shiftDay(day,-6),end:day});
  }
  async function grid(body,options={}){const range=placementGridPeriod(body),days=[];for(const date of daysBetween(range.start,range.end))days.push({date,report:await read({...range,start:date,end:date},options)});return placementGrid({...range,days});}
- return {read,launch,grid,gridScope:placementGridPeriod,tick,activeJobs:()=>Number(active),start(){if(!autoSync||timer||stopped)return;initial=setTimeout(()=>void tick().catch(()=>{}),20000);initial.unref?.();timer=setInterval(()=>void tick().catch(()=>{}),60000);timer.unref?.();},stop(){stopped=true;clearTimeout(initial);clearInterval(timer);}};
+ return {read,launch,grid,gridScope:placementGridPeriod,tick,activeJobs:()=>Number(active),start(){if(autoSync===false||timer||stopped)return;initial=setTimeout(()=>void tick().catch(()=>{}),20000);initial.unref?.();timer=setInterval(()=>void tick().catch(()=>{}),60000);timer.unref?.();},stop(){stopped=true;clearTimeout(initial);clearInterval(timer);}};
 }

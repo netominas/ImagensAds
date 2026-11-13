@@ -6,7 +6,7 @@ import {shiftDay} from './warehouse.mjs';
 import {today} from './fx.mjs';
 
 // One paid attempt per campaign/day. Failures require an explicit manual retry.
-export function createCampaignAnalysis(storage,{catalog,scope,report,changes,isBusy=()=>false,generate=generateCopy,clock=()=>new Date(),day=today}={}){
+export function createCampaignAnalysis(storage,{catalog,scope,report,changes,autoEnabled=()=>true,isBusy=()=>false,generate=generateCopy,clock=()=>new Date(),day=today}={}){
  const db=storage.db;let active=false,timer,initial,stopped=false;
  db.exec(`CREATE TABLE IF NOT EXISTS roi_analysis_settings(account TEXT NOT NULL,campaign TEXT NOT NULL,enabled INTEGER NOT NULL,updated TEXT NOT NULL,PRIMARY KEY(account,campaign));
  CREATE TABLE IF NOT EXISTS roi_campaign_analyses(account TEXT NOT NULL,campaign TEXT NOT NULL,day TEXT NOT NULL,status TEXT NOT NULL,provider TEXT,model TEXT,input TEXT,text TEXT,error TEXT,warning TEXT,created TEXT NOT NULL,finished TEXT,PRIMARY KEY(account,campaign,day));`);
@@ -66,7 +66,7 @@ ${JSON.stringify(input)}`;}
   return item(account,campaign,date);
  }
  async function tick(){
-  if(stopped||active||isBusy())return;
+  if(!autoEnabled()||stopped||active||isBusy())return;
   const hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'America/Sao_Paulo',hour:'2-digit',hourCycle:'h23'}).format(clock()));if(hour<8)return;
   const date=shiftDay(day(),-1),rows=db.prepare('SELECT * FROM roi_analysis_settings WHERE enabled=1 ORDER BY updated,account,campaign').all();
   for(const row of rows){if(item(row.account,row.campaign,date))continue;try{await launch(row.account,row.campaign,{automatic:true});if(active)return;}catch{/* Wait for complete data or configuration; never invent missing values. */}}

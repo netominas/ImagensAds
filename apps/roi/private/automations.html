@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Automações · ROI</title>
+<link rel="stylesheet" href="/apps/roi/style.css">
+<body class="sidebar-hidden">
+<main>
+ <header class="topbar"><a href="/apps/roi/">← Voltar ao relatório de ROI</a></header>
+ <div class="page">
+  <h1>Automações</h1>
+  <section class="payments-panel">
+   <form id="automation-form">
+    <fieldset disabled>
+     <legend>Rotinas programadas</legend>
+     <p><label><input type="checkbox" name="ads"> Google Ads · coleta do dia a cada hora</label></p>
+     <p><label><input type="checkbox" name="gam"> Ad Manager · coleta do dia a cada hora</label></p>
+     <p><label><input type="checkbox" name="history"> Revisão dos últimos sete dias · primeiro ciclo a partir das 03h</label></p>
+     <p><label><input type="checkbox" name="placements"> Placements · uma rodada na janela das 05h</label></p>
+     <p><label><input type="checkbox" name="analysis"> Análise por IA · campanhas habilitadas, a partir das 08h</label></p>
+     <p><label><input type="checkbox" name="script"> Coleta pelo script da MCC · conforme o agendamento no Google Ads</label></p>
+     <p>Horário de Brasília. Para pausar a coleta na MCC pelo painel, use a versão atualizada do script com chave de envio e pause versões antigas no Google Ads.</p>
+     <button type="submit" class="button primary">Salvar</button>
+     <button type="button" class="button secondary" id="pause-all">Desativar todas</button>
+    </fieldset>
+   </form>
+   <p id="automation-status" role="status"></p>
+  </section>
+ </div>
+</main>
+<script type="module" src="/apps/roi/automations.js"></script>
+</body>
+</html>

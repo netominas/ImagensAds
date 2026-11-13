@@ -51,6 +51,20 @@ function main() {
 }
 
 function collectAccount(account, accountId, spreadsheetId) {
+  const token = ACCOUNT_UPLOAD_KEYS[accountId];
+  if (token) {
+    const response = UrlFetchApp.fetch(REPORT_ENDPOINT, {
+      headers: {Authorization: 'Bearer ' + token},
+      muteHttpExceptions: true, followRedirects: false
+    });
+    if (response.getResponseCode() !== 200) {
+      throw new Error('Não foi possível consultar a configuração do painel (HTTP ' + response.getResponseCode() + ').');
+    }
+    if (!JSON.parse(response.getContentText()).enabled) {
+      console.log('Conta ' + accountId + ': coleta pausada no painel.');
+      return;
+    }
+  }
   AdsManagerApp.select(account);
 
   const timezone = account.getTimeZone();
@@ -123,7 +137,6 @@ function collectAccount(account, accountId, spreadsheetId) {
     collect(`SELECT ${assetFields} FROM asset_group WHERE campaign.id IN (${[...pmaxIds].join(',')})`, 'Grupo PMax', configured, false);
   }
 
-  const token = ACCOUNT_UPLOAD_KEYS[accountId];
   if (token) {
     const batch = {campaigns: rows, account: accountRows, daily, destinations: configured};
     const payload = Object.fromEntries(Object.entries(batch).map(([key, table]) => [

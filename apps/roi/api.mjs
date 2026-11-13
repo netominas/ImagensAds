@@ -39,6 +39,8 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
  db.prepare("UPDATE roi_runs SET status='error',error='Sincronização interrompida pelo reinício. Os dados e relatórios anteriores foram preservados.' WHERE status='running'").run();
  const deductions=createDeductionSettings(db);
  const warehouse=createROIWarehouse(db),googleAdsLink=createGoogleAdsLinks(db,google),campaignChanges=createCampaignChanges(db);
+ const automationDefaults={ads:autoSync,gam:autoSync,history:true,placements:false,analysis:true,script:true};
+ const automations=()=>({...automationDefaults,...warehouse.meta('automation_settings')});
  const budgets=createBudgets(db,google,{accountFor:async account=>{if(typeof account!=='string'||!/^\d{10}$/.test(account))throw new AdsError('Conta inválida.',{status:400});const a=(await catalog()).accounts.find(a=>a.id===account);if(!a)throw new AdsError('Conta indisponível para este painel.',{status:403});return a;}});
  const links=()=>db.prepare('SELECT * FROM roi_links ORDER BY site,utm').all();
  const config=()=>{const r=db.prepare('SELECT data FROM roi_settings WHERE id=1').get();return r?JSON.parse(r.data):null;};
@@ -95,13 +97,12 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   const manual=getRun(run).config.mode==='manual',stored=manual?result:{database:true,data_coverage:result.data_coverage,warnings:result.warnings,updated_at:result.updated_at,sources:result.sources};warehouse.putMeta('collection_warnings',[catalogError,fxError].filter(Boolean));
   db.prepare("UPDATE roi_runs SET status='done',result=?,progress='Concluído',finished=? WHERE id=?").run(JSON.stringify(stored),new Date().toISOString(),run);warehouse.putMeta('last_collection',{at:new Date().toISOString(),run,complete:result.data_coverage.complete,stale:result.data_coverage.stale_days>0});return {complete:result.data_coverage.complete&&!result.data_coverage.stale_days&&!fxError&&!catalogError};
  }
- const placements=createPlacements(db,{google,admanager,catalog,settings:()=>defaults(warehouse.meta('catalog')||{accounts:[],networks:[]}),warehouse,loadRates:rates,isBusy:()=>active,baseline:({account,campaign,start,end})=>{const result=databaseReport({start,end,...defaults(warehouse.meta('catalog')||{accounts:[],networks:[]})}).result,rows=result.rows.filter(r=>r.account===account&&r.campaign===campaign);return {revenue:result.data_coverage.complete&&!result.data_coverage.stale_days&&rows.length&&rows.every(r=>r.revenue!=null&&!r.ambiguous)?rows.reduce((s,r)=>s+(r.gross_revenue??r.revenue),0):null,deductions:deductions.read(),deduction_days:rows.flatMap(r=>r.deduction_days||[])};}});
- const analysis=createCampaignAnalysis(storage,{catalog,scope:()=>defaults(warehouse.meta('catalog')||{accounts:[],networks:[]}),report:scope=>databaseReport(scope).result,changes:campaignChanges.list,isBusy:()=>active,...(generateAnalysis?{generate:generateAnalysis}:{})});
- const scheduler=createROIScheduler({enabled:autoSync,read:()=>warehouse.meta('auto_sync'),write:value=>warehouse.putMeta('auto_sync',value),isBusy:()=>active,day:today,run:async range=>{
-  const data=await catalog(),selected=defaults(data);
-  if(!selected.accounts.length||!selected.networks.length)throw Error('Configure as fontes');
-  if(!config())db.prepare('INSERT OR REPLACE INTO roi_settings VALUES (1,?)').run(JSON.stringify(selected));
-  const scope={start:range.start,end:range.end,...selected};
+ const placements=createPlacements(db,{google,admanager,catalog,settings:()=>defaults(warehouse.meta('catalog')||{accounts:[],networks:[]}),warehouse,loadRates:rates,autoSync:()=>automations().placements,isBusy:()=>active,baseline:({account,campaign,start,end})=>{const result=databaseReport({start,end,...defaults(warehouse.meta('catalog')||{accounts:[],networks:[]})}).result,rows=result.rows.filter(r=>r.account===account&&r.campaign===campaign);return {revenue:result.data_coverage.complete&&!result.data_coverage.stale_days&&rows.length&&rows.every(r=>r.revenue!=null&&!r.ambiguous)?rows.reduce((s,r)=>s+(r.gross_revenue??r.revenue),0):null,deductions:deductions.read(),deduction_days:rows.flatMap(r=>r.deduction_days||[])};}});
+ const analysis=createCampaignAnalysis(storage,{catalog,scope:()=>defaults(warehouse.meta('catalog')||{accounts:[],networks:[]}),report:scope=>databaseReport(scope).result,changes:campaignChanges.list,autoEnabled:()=>automations().analysis,isBusy:()=>active,...(generateAnalysis?{generate:generateAnalysis}:{})});
+ const scheduler=createROIScheduler({enabled:()=>{const {ads,gam}=automations();return ads||gam;},reviewHistory:()=>automations().history,read:()=>warehouse.meta('auto_sync'),write:value=>warehouse.putMeta('auto_sync',value),isBusy:()=>active,day:today,run:async range=>{
+  const data=warehouse.meta('catalog')||{accounts:[],networks:[]},selected=defaults(data),settings=automations();
+  const scope={start:range.start,end:range.end,accounts:settings.ads?selected.accounts:[],networks:settings.gam?selected.networks:[]};
+  if(!scope.accounts.length&&!scope.networks.length)throw Error('Configure as fontes');
   const job=launch(scope,{mode:range.deep?'automatic-deep':'automatic'});
   return await job.promise;
  }});
@@ -173,6 +174,10 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   try{
    if(user?.role==='reader')return await readOnly(request,user);
    if(method==='GET'){
+    if(path==='/automacoes'){
+     if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);
+     return authJSON(automations());
+    }
     if(path==='/script-report'){
      const start=url.searchParams.get('start'),end=url.searchParams.get('end');
      dateRange(start,end);
@@ -206,6 +211,13 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
    if(!['POST','DELETE'].includes(method))return authJSON({error:'Método não permitido.'},405);
    if(!request.headers.get('content-type')?.startsWith('application/json'))return authJSON({error:'Envie JSON.'},415);
    let body;try{body=await request.json();}catch{throw new AdsError('JSON inválido.',{status:400});}if(!body||typeof body!=='object'||Array.isArray(body))throw new AdsError('Dados inválidos.',{status:400});
+   if(path==='/automacoes'&&method==='POST'){
+    if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);
+    const keys=Object.keys(automationDefaults);
+    if(Object.keys(body).length!==keys.length||keys.some(key=>typeof body[key]!=='boolean'))return authJSON({error:'Configuração inválida.'},400);
+    warehouse.putMeta('automation_settings',body);
+    return authJSON(automations());
+   }
    if(path==='/script-report'&&method==='POST')return await saveScriptBatch(body);
    if(path==='/script-report/token'&&method==='POST'){
     if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);
@@ -247,6 +259,9 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   return token?db.prepare('SELECT account FROM roi_script_tokens WHERE digest=?').get(hashScriptToken(token))?.account:null;
  };
  api.receiveScriptBatch=async(request,account)=>{
+  const enabled=automations().script;
+  if(request.method==='GET')return authJSON({enabled});
+  if(!enabled)return authJSON({error:'Envio automático pausado no painel.'},409);
   if(!request.headers.get('content-type')?.startsWith('application/json'))return authJSON({error:'Envie JSON.'},415);
   try{return await saveScriptBatch(await request.json(),account);}
   catch(error){return authJSON({error:error instanceof AdsError?error.message:'Não foi possível importar o lote.'},error instanceof AdsError?error.status:error instanceof SyntaxError?400:500);}
