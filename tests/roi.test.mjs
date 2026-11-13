@@ -70,9 +70,17 @@ test('ROI shares login, blocks private files and cross-origin changes, persists 
  const dir=await mkdtemp(join(tmpdir(),'ak-roi-'));let storage=openStorage(dir,'9'.repeat(64));
  await storage.saveKeys({gemini:'private-fake-key-keep'});await storage.saveSettings({templates:[{id:'keep',prompt:'Manter'}],models:{}});storage.addImage({id:'keep-image'},'image/png',Buffer.from([1]));
  const google={configured:()=>true,accessible:async()=>({resourceNames:['customers/'+account]}),search:async(cid,q)=>q.includes('metrics.optimization_score_url')?[{customer:{id:account},metrics:{optimizationScoreUrl:'https://adwords.google.com/aw/recommendations?ocid=7654321&authuser=3'}}]:[{customer:{id:account,descriptiveName:'Conta',manager:false,status:'ENABLED',currencyCode:'BRL',timeZone:'America/Sao_Paulo'}}]};
- const gam={networks:async()=>[{id:'1234',name:'Rede',currency:'BRL',timezone:'America/Sao_Paulo'}],keys:async()=>[{id:'1',name:'utm_campaign',reportableType:'ON'}],report:async()=>({mode:'CUSTOM_CRITERIA',key:'1',report_id:'77',rows:[csv()]})};
+ const gamStarted=Promise.withResolvers();
+ const gam={networks:async()=>[{id:'1234',name:'Rede',currency:'BRL',timezone:'America/Sao_Paulo'}],keys:async()=>[{id:'1',name:'utm_campaign',reportableType:'ON'}],report:async()=>{gamStarted.resolve();return {mode:'CUSTOM_CRITERIA',key:'1',report_id:'77',rows:[csv()]};}};
  const env={ADMIN_EMAIL:'roi@example.test',ADMIN_PASSWORD_HASH:await hashPassword('roi-test-password-only')};
- const server=createAppServer({env,storage,authStore:storage.store('auth'),googleAds:google,roiOptions:{admanager:gam,loadCosts:async()=>[cost({final_urls:['https://exemplo.com.br/pagina/']})],rates:async()=>({})}});await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port,prefix='/apps/roi/api';let cookie,run;
+ const loadCosts=async()=>{
+  let timer;
+  try{
+   await Promise.race([gamStarted.promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('GAM did not start while Ads was running')),2000);})]);
+   return [cost({final_urls:['https://exemplo.com.br/pagina/']})];
+  }finally{clearTimeout(timer);}
+ };
+ const server=createAppServer({env,storage,authStore:storage.store('auth'),googleAds:google,roiOptions:{admanager:gam,loadCosts,rates:async()=>({})}});await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port,prefix='/apps/roi/api';let cookie,run;
  const request=(path,body,origin=base)=>fetch(base+path,{method:body?'POST':'GET',redirect:'manual',headers:{'Content-Type':'application/json',Origin:origin,...(cookie?{Cookie:cookie}:{})},...(body?{body:JSON.stringify(body)}:{})});
  try{
   for(const path of ['/apps/roi/','/apps/roi/sites','/apps/roi/vinculos','/apps/roi/redes','/apps/roi/pagamentos'])assert.equal((await request(path)).status,303);
