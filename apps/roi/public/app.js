@@ -290,9 +290,18 @@ function showRun(run,applyScope=false){
  const url=new URL(location.href);if(state.archive)url.searchParams.set('run',run.id);else{url.searchParams.delete('run');url.searchParams.set('start',run.start);url.searchParams.set('end',run.end);}history.replaceState(null,'',url.pathname+url.search);
  const sites=[...new Set([...r.rows.map(row=>row.site),...r.pending.map(row=>row.site)].filter(Boolean))].sort();if(r.rows.some(row=>!row.site)||r.pending.some(row=>!row.site))sites.push('Sem site identificado');$('site').innerHTML='<option value="">Todos os sites</option>'+sites.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');applySiteFromURL();
  $('report-range').textContent=(state.archive?'Relatório salvo: ':'Banco de dados: ')+run.start.split('-').reverse().join('/')+' a '+run.end.split('-').reverse().join('/')+(readOnly?' · Acesso de leitura':' · '+run.config.accounts.length+' contas / '+run.config.networks.length+' redes');
- $('updated').textContent=r.updated_at?'Última atualização: '+new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short'}).format(new Date(r.updated_at)):'Aguardando primeira coleta';
+ const collectionTime=new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short',timeZone:'America/Sao_Paulo'});
+ const collectedAt=source=>source.collected_at?collectionTime.format(new Date(source.collected_at)):'sem coleta válida';
+ const sourceTimes=[['ads','Google Ads'],['gam','Ad Manager']].flatMap(([kind,label])=>{
+  const sources=r.sources.filter(source=>source.kind===kind);
+  if(!sources.length)return [];
+  const latest=sources.filter(source=>source.collected_at).sort((a,b)=>b.collected_at.localeCompare(a.collected_at))[0];
+  const pending=sources.filter(source=>source.stale||!source.ok).length;
+  return [label+' · '+(latest?collectedAt(latest):'sem coleta válida')+(pending?' ('+pending+' com pendência)':'')];
+ });
+ $('updated').textContent=sourceTimes.length?'Última coleta por fonte · '+sourceTimes.join(' | '):'Aguardando primeira coleta';
  $('footer-state').textContent=state.archive?'Relatório histórico preservado':r.partial?'Importação incompleta · consulte as fontes':r.data_coverage?.stale_days?'Dados preservados · há fontes atrasadas':'Consulta ao banco local · receita estimada';
- $('sources-summary').innerHTML='<strong>Fontes e cobertura do período</strong><ul>'+r.sources.map(s=>'<li>'+esc(s.kind==='gam'?'Ad Manager':'Google Ads')+' · '+esc(s.name)+' ('+esc(s.id)+'): '+(s.stale?'coleta atrasada; dados preservados':s.ok?'dados disponíveis':esc(s.missing_days||'')+' dia(s) pendente(s)')+'</li>').join('')+'</ul>';
+ $('sources-summary').innerHTML='<strong>Fontes e cobertura do período</strong><ul>'+r.sources.map(s=>'<li>'+esc(s.kind==='gam'?'Ad Manager':'Google Ads')+' · '+esc(s.name)+' ('+esc(s.id)+'): '+(s.stale?'coleta atrasada; dados preservados':s.ok?'dados disponíveis':esc(s.missing_days||'')+' dia(s) pendente(s)')+' · Última coleta válida · '+esc(collectedAt(s))+'</li>').join('')+'</ul>';
  $('rates-summary').innerHTML='<strong>Dólar usado · <a href="https://www.bcb.gov.br/estabilidadefinanceira/historicocotacoes" target="_blank" rel="noopener">Banco Central / PTAX venda</a></strong><ul>'+Object.entries(r.rates).map(([day,q])=>'<li>'+esc(day)+': US$ 1 = R$ '+q.rate.toFixed(4)+' · cotação de '+esc(q.quote_date)+(q.previous_day?' (última disponível)':'')+'</li>').join('')+'</ul>';render();
 }
 function applyCatalog(catalog,selected){
