@@ -67,7 +67,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
  }
  async function collect(run,scope,rules,plan){
   const progress=message=>db.prepare('UPDATE roi_runs SET progress=? WHERE id=?').run(message,run);
-  let data=warehouse.meta('catalog')||{accounts:[],networks:[],warnings:[]},catalogError='';try{progress('Atualizando catálogo de contas e redes…');data=await refreshCatalog();}catch{catalogError='O catálogo não pôde ser atualizado; foram mantidas as fontes já conhecidas.';}
+  let data=warehouse.meta('catalog')||{accounts:[],networks:[],warnings:[]},catalogError='';if(!plan)try{progress('Atualizando catálogo de contas e redes…');data=await refreshCatalog();}catch{catalogError='O catálogo não pôde ser atualizado; foram mantidas as fontes já conhecidas.';}
   const tasks=plan||[...scope.accounts.map(source=>({kind:'ads',source,start:scope.start,end:scope.end})),...scope.networks.map(source=>({kind:'gam',source,start:scope.start,end:scope.end}))];
   const ads=tasks.filter(t=>t.kind==='ads'),gam=tasks.filter(t=>t.kind==='gam');let cursor=0,done=0;
   const collectAds=async()=>{for(;;){const task=ads[cursor++];if(!task)break;const account=data.accounts.find(a=>a.id===task.source);try{if(!account)throw Error('Fonte indisponível');const facts=await loadCosts(google,account,task.start,task.end);warehouse.saveSource('ads',task.source,task.start,task.end,facts);}catch{warehouse.failSource('ads',task.source,task.start,task.end,'Não foi possível consultar a conta Google Ads.');}done++;progress(`Google Ads: ${done} de ${ads.length} coletas concluídas`);}};
@@ -86,7 +86,14 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
  }
  const placements=createPlacements(db,{google,admanager,catalog,settings:()=>defaults(warehouse.meta('catalog')||{accounts:[],networks:[]}),warehouse,loadRates:rates,autoSync,isBusy:()=>active,baseline:({account,campaign,start,end})=>{const result=databaseReport({start,end,...defaults(warehouse.meta('catalog')||{accounts:[],networks:[]})}).result,rows=result.rows.filter(r=>r.account===account&&r.campaign===campaign);return {revenue:result.data_coverage.complete&&!result.data_coverage.stale_days&&rows.length&&rows.every(r=>r.revenue!=null&&!r.ambiguous)?rows.reduce((s,r)=>s+(r.gross_revenue??r.revenue),0):null,deductions:deductions.read(),deduction_days:rows.flatMap(r=>r.deduction_days||[])};}});
  const analysis=createCampaignAnalysis(storage,{catalog,scope:()=>defaults(warehouse.meta('catalog')||{accounts:[],networks:[]}),report:scope=>databaseReport(scope).result,changes:campaignChanges.list,isBusy:()=>active,...(generateAnalysis?{generate:generateAnalysis}:{})});
- const scheduler=createROIScheduler({enabled:autoSync,read:()=>warehouse.meta('auto_sync'),write:value=>warehouse.putMeta('auto_sync',value),isBusy:()=>active,day:today,run:async range=>{const data=await catalog(),selected=defaults(data);if(!selected.accounts.length||!selected.networks.length)throw Error('Configure as fontes');if(!config())db.prepare('INSERT OR REPLACE INTO roi_settings VALUES (1,?)').run(JSON.stringify(selected));const job=launch({start:range.start,end:range.end,...selected},{mode:range.deep?'automatic-deep':'automatic'});return await job.promise;}});
+ const scheduler=createROIScheduler({enabled:autoSync,read:()=>warehouse.meta('auto_sync'),write:value=>warehouse.putMeta('auto_sync',value),isBusy:()=>active,day:today,run:async(range,{retry})=>{
+  const data=await catalog(),selected=defaults(data);
+  if(!selected.accounts.length||!selected.networks.length)throw Error('Configure as fontes');
+  if(!config())db.prepare('INSERT OR REPLACE INTO roi_settings VALUES (1,?)').run(JSON.stringify(selected));
+  const scope={start:range.start,end:range.end,...selected},plan=retry?warehouse.missingRanges(scope,{retryFailed:true}):null;
+  const job=launch(scope,{mode:retry?'automatic-retry':range.deep?'automatic-deep':'automatic',plan});
+  return await job.promise;
+ }});
  async function gridScope(body){const range=gridPeriod(body.site,body.end||today()),data=await catalog();return {...range,scope:scopeFrom({...range,...defaults(data)},data)};}
  async function gridData(body,user){const {scope,...range}=await gridScope(body),days=[];for(let date=range.start;date<=range.end;date=shiftDay(date,1))days.push({date,result:databaseReport({...scope,start:date,end:date}).result});return {deductions:days[0]?.result.deductions,...roiGrid({...range,days,...(user?.role==='reader'?{allowed:r=>canCampaign(user,r.account,r.campaign)}:{})}),importing:user?.role==='reader'?false:Boolean(runningJob()),can_import:user?.role!=='reader'};}
  function campaignQuickROI(params){

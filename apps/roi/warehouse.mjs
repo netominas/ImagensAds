@@ -27,10 +27,10 @@ export function createROIWarehouse(db,{now=()=>new Date().toISOString()}={}){
  }
  function saveRates(rates){const save=db.prepare('INSERT OR REPLACE INTO roi_fx_days VALUES (?,?,?)');db.exec('BEGIN IMMEDIATE');try{for(const [day,q]of Object.entries(rates))if(/^\d{4}-\d{2}-\d{2}$/.test(day)&&Number.isFinite(q.rate)&&q.rate>0)save.run(day,JSON.stringify(q),now());bump();db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}}
  function sourceDays(kind,source,start,end){return db.prepare('SELECT * FROM roi_source_days WHERE kind=? AND source=? AND day BETWEEN ? AND ? ORDER BY day').all(kind,source,start,end);}
- function missingRanges(scope,{cooldown=300000}={}){
+ function missingRanges(scope,{cooldown=300000,retryFailed=false}={}){
   const plan=[],days=daysBetween(scope.start,scope.end),clock=Date.parse(now());
   for(const [kind,ids]of [['ads',scope.accounts],['gam',scope.networks]])for(const source of ids){const stored=new Map(sourceDays(kind,source,scope.start,scope.end).map(r=>[r.day,r]));let range;
-   for(const day of days){const r=stored.get(day),missing=!r?.collected_at&&!(r?.error&&clock-Date.parse(r.last_attempt)<cooldown);if(!missing){range=null;continue;}if(!range){range={kind,source,start:day,end:day};plan.push(range);}else range.end=day;}
+   for(const day of days){const r=stored.get(day),missing=(!r?.collected_at||(retryFailed&&r.error))&&!(r?.error&&clock-Date.parse(r.last_attempt)<cooldown);if(!missing){range=null;continue;}if(!range){range={kind,source,start:day,end:day};plan.push(range);}else range.end=day;}
   }return plan;
  }
  function read(scope,rules=[],catalog={accounts:[],networks:[]}){

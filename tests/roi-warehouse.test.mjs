@@ -17,6 +17,7 @@ test('daily storage is idempotent, replaces successful zero-activity days and va
 test('failed source refresh preserves last valid facts and marks freshness without fabricating zeroes',()=>{
  const db=new DatabaseSync(':memory:');try{const store=createROIWarehouse(db);store.saveSource('ads',account,day,day,[cost()]);store.saveSource('gam',network,day,day,[revenue()]);store.failSource('ads',account,day,day,'API temporarily unavailable');
  const r=store.read(scope);assert.equal(r.rows[0].cost,10);assert.equal(r.rows[0].profit,5);assert.equal(r.partial,false);assert.equal(r.data_coverage.stale_days,1);assert.ok(r.warnings[0].includes('preservados'));
+ assert.deepEqual(store.missingRanges(scope,{retryFailed:true,cooldown:0}),[{kind:'ads',source:account,start:day,end:day}]);
  const missing=store.read({...scope,end:'2026-10-25'});assert.equal(missing.partial,true);assert.equal(missing.data_coverage.missing_days,2);assert.equal(missing.rows[0].profit,null);
  const daily=dailyReport(missing.rows,missing.rates,day,'2026-10-25');assert.equal(daily[0].cost,10);assert.equal(daily[1].cost,null);assert.equal(daily[1].revenue,null);
  store.failSource('gam',network,'2026-10-25','2026-10-25','error');const plan=store.missingRanges({...scope,end:'2026-10-25'});assert.equal(plan.length,1);assert.equal(plan[0].kind,'ads');
@@ -35,4 +36,16 @@ test('automatic collection runs hourly, revisits seven days once daily, and prev
 test('failed automatic collection retries with backoff and keeps the previous successful timestamp',async()=>{
  let time=Date.parse('2026-10-26T12:00:00Z'),state={last_success:'2026-10-25T12:00:00Z'},count=0;
  const scheduler=createROIScheduler({enabled:true,clock:()=>time,day:()=>day,read:()=>state,write:s=>state=s,isBusy:()=>false,run:async()=>{count++;throw Error('offline');}});await scheduler.tick();assert.equal(state.last_ok,false);assert.equal(state.last_success,'2026-10-25T12:00:00Z');time+=4*60000;await scheduler.tick();assert.equal(count,1);time+=60000;await scheduler.tick();assert.equal(count,2);scheduler.stop();
+});
+test('failed hourly collection retries without moving the next regular cycle',async()=>{
+ let time=Date.parse('2026-10-26T12:00:00Z'),state={};
+ const calls=[];
+ const scheduler=createROIScheduler({enabled:true,clock:()=>time,day:()=> '2026-10-26',read:()=>state,write:s=>state=s,isBusy:()=>false,run:async(range,{retry})=>{calls.push([range,retry]);return {complete:retry};}});
+ await scheduler.tick();
+ time+=5*60000;await scheduler.tick();
+ assert.deepEqual(calls,[[{start:'2026-10-20',end:'2026-10-26',deep:true},false],[{start:'2026-10-20',end:'2026-10-26',deep:true},true]]);
+ assert.equal(scheduler.status().next_at,'2026-10-26T13:00:00.000Z');
+ time+=55*60000;await scheduler.tick();
+ assert.deepEqual(calls.at(-1),[{start:'2026-10-26',end:'2026-10-26',deep:false},false]);
+ scheduler.stop();
 });
