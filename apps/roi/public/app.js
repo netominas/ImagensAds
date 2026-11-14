@@ -126,6 +126,7 @@ const columnPreferences = new Map();
 const columnStorageKey = view => 'roi-hidden-columns-' + view;
 const columnMenu = $('report-columns');
 const columnOptions = $('report-column-options');
+const columnButton = "<button type=\"button\" data-report-columns class=\"campaign-search-toggle\" aria-label=\"Selecionar colunas\" title=\"Selecionar colunas\" popovertarget=\"report-columns\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m15 5 4 4M4 20l4.5-1 11-11a2.8 2.8 0 0 0-4-4l-11 11L4 20Z\"/></svg></button>";
 let columnView = '';
 let columnSchema = '';
 
@@ -160,7 +161,7 @@ function applyReportColumns() {
 function configureReportColumns(columns) {
  const schema = JSON.stringify(columns);
  if (columnView !== state.view || columnSchema !== schema) {
-  columnMenu.open = false;
+  columnMenu.hidePopover();
   columnView = state.view;
   columnSchema = schema;
   const hidden = hiddenReportColumns(columnView);
@@ -191,14 +192,27 @@ $('report-columns-reset').onclick = () => {
  columnOptions.querySelectorAll('input').forEach(input => { input.checked = true; });
  saveReportColumns();
 };
-document.addEventListener('click', event => {
- if (columnMenu.open && !columnMenu.contains(event.target)) columnMenu.open = false;
-});
-columnMenu.addEventListener('keydown', event => {
- if (event.key !== 'Escape' || !columnMenu.open) return;
- columnMenu.open = false;
- columnMenu.querySelector('summary').focus();
-});
+function positionColumnMenu() {
+ if (!columnMenu.matches(':popover-open')) return;
+ const button = document.querySelector('.report-sticky-header:not([hidden]) [data-report-columns]') ||
+  $('table-head').querySelector('[data-report-columns]');
+ const anchor = button?.getBoundingClientRect();
+ const viewport = $('table-head').closest('.table-scroll').getBoundingClientRect();
+ if (!anchor || anchor.right <= viewport.left || anchor.left >= viewport.right || anchor.bottom < 0 || anchor.top > innerHeight) {
+  columnMenu.hidePopover();
+  return;
+ }
+ const left = Math.max(8, Math.min(anchor.left, document.documentElement.clientWidth - columnMenu.offsetWidth - 8));
+ const below = anchor.bottom + 6;
+ const top = below + columnMenu.offsetHeight <= innerHeight - 8 ? below : Math.max(8, anchor.top - columnMenu.offsetHeight - 6);
+ columnMenu.style.left = left + 'px';
+ columnMenu.style.top = top + 'px';
+}
+columnMenu.addEventListener('toggle', positionColumnMenu);
+window.addEventListener('scroll', event => {
+ if (event.target !== columnMenu && columnMenu.matches(':popover-open')) requestAnimationFrame(positionColumnMenu);
+}, {capture:true,passive:true});
+window.addEventListener('resize', positionColumnMenu);
 
 function renderDailyTable(){
  recentUI.close();
@@ -206,7 +220,7 @@ function renderDailyTable(){
  rows.sort((a,b)=>{const x=a[state.sort],y=b[state.sort];if(x==null)return y==null?0:1;if(y==null)return -1;return(typeof x==='string'?x.localeCompare(y):x-y)*state.direction;});
  state.exportRows=rows;const panel=$('report-panel');panel.classList.remove('campaign-report','single-site-campaigns');panel.classList.add('daily-report');
  $('table-title').textContent='Resultados diários';$('table-description').textContent='Resultados por dia no período selecionado, consultados no banco local. Lucro e ROI exigem conciliação confirmada.';
- $('table-head').innerHTML='<tr>'+columns.map(([key,label])=>'<th scope="col" title="'+esc(metricTitles[key]||label)+'" aria-sort="'+(state.sort===key?(state.direction===1?'ascending':'descending'):'none')+'"><button data-sort="'+key+'">'+label+(state.sort===key?(state.direction===1?' ↑':' ↓'):'')+'</button></th>').join('')+'</tr>';
+ $('table-head').innerHTML='<tr>'+columns.map(([key,label])=>'<th scope="col" title="'+esc(metricTitles[key]||label)+'" aria-sort="'+(state.sort===key?(state.direction===1?'ascending':'descending'):'none')+'"><button data-sort="'+key+'">'+label+(state.sort===key?(state.direction===1?' ↑':' ↓'):'')+'</button>'+(key==='date'?columnButton:'')+'</th>').join('')+'</tr>';
  $('table-body').innerHTML=rows.length?rows.map(d=>'<tr><td>'+esc(d.date.split('-').reverse().join('/'))+dailyChangeIcon(d.date)+'</td><td>'+money(d.cost)+'</td><td'+deductionTitle(d)+'>'+money(d.revenue)+'</td><td class="'+(d.profit==null?'':d.profit<0?'negative':'positive')+'">'+money(d.profit)+'</td><td>'+pct(d.roi)+'</td>'+campaignMetricCells(d)+'</tr>').join(''):'<tr><td colspan="11" class="empty">'+(selectedCampaignRows().length?'Nenhum dia corresponde aos filtros.':'Campanha sem dados neste período ou site. Use Atualizar agora para importar o período.')+'</td></tr>';
  const totals=dailyTotals(rows);$('table-foot').hidden=!rows.length;$('table-foot').innerHTML='<tr><td>Total filtrado</td><td>'+money(totals.cost)+'</td><td>'+money(totals.revenue)+'</td><td>'+money(totals.profit)+'</td><td>'+pct(totals.roi)+'</td>'+campaignMetricCells(totals)+'</tr>';
  configureReportColumns(columns);
@@ -241,7 +255,7 @@ $('campaign-search-clear').onclick=()=>{$('search').value='';renderTable();$('se
 $('search').addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();setCampaignSearch(false);}});
 function renderTable(){quickROI.close();recentUI.close();if(state.view==='campaign'){renderDailyTable();return;}$('report-panel').classList.remove('daily-report');const isSites=state.view==='sites',hideSite=!isSites&&Boolean($('site').value),rows=rowsFiltered();state.exportRows=rows;const columns=isSites?[['site','Site'],['campaigns','Campanhas'],['cost','Custo vinculado'],['revenue','Receita vinculada'],['profit','Lucro'],['roi','ROI'],['ecpm','eCPM'],['cpc','CPC'],['pmr','PMR'],['pending','Pendências']]:[['name','Nome da campanha'],['site','Site'],['cost','Custo'],['revenue','Receita'],['profit','Lucro'],['roi','ROI %'],['ecpm','eCPM'],['pmr','PMR'],['cpc','CPC GAM'],['conversion_rate','Conversão'],['cost_per_conversion','Custo/Conv'],['ads_cpc','CPC Ads']];
  if(hideSite)columns.splice(1,1);$('report-panel').classList.toggle('single-site-campaigns',hideSite);$('report-panel').classList.toggle('campaign-report',!isSites);
- $('table-title').innerHTML=(isSites?'Resultados por site':'Resultados por campanha')+` <span>${rows.length}</span>`;$('table-description').textContent=isSites?'Valores confirmados agrupados por domínio. Abra um site para ver suas campanhas.':'Campanhas sem receita vinculada ficam com lucro e ROI em aberto.';$('table-head').innerHTML='<tr>'+columns.map(([k,t])=>`<th scope="col" title="${esc(metricTitles[k]||t)}" aria-sort="${state.sort===k?(state.direction===1?'ascending':'descending'):'none'}">${k==='name'?`<div class="campaign-name-heading"><button data-sort="name">${t}${state.sort==='name'?(state.direction===1?' ↑':' ↓'):''}</button><button type="button" data-campaign-search class="campaign-search-toggle${$('search').value.trim()?' is-active':''}" aria-label="Pesquisar campanhas" title="Pesquisar campanhas" aria-expanded="${state.searchOpen}" aria-controls="campaign-search-panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button>${hideSite?`<button type="button" data-campaign-grid class="campaign-search-toggle" aria-label="ROI dos últimos 10 dias" title="ROI dos últimos 10 dias" aria-haspopup="dialog" aria-controls="roi-grid-dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></button>`:''}</div>`:k==='final_urls'?t:`<button data-sort="${k}">${t}${state.sort===k?(state.direction===1?' ↑':' ↓'):''}</button>`}</th>`).join('')+'</tr>';
+ $('table-title').innerHTML=(isSites?'Resultados por site':'Resultados por campanha')+` <span>${rows.length}</span>`;$('table-description').textContent=isSites?'Valores confirmados agrupados por domínio. Abra um site para ver suas campanhas.':'Campanhas sem receita vinculada ficam com lucro e ROI em aberto.';$('table-head').innerHTML='<tr>'+columns.map(([k,t])=>`<th scope="col" title="${esc(metricTitles[k]||t)}" aria-sort="${state.sort===k?(state.direction===1?'ascending':'descending'):'none'}">${k==='name'?`<div class="campaign-name-heading"><button data-sort="name">${t}${state.sort==='name'?(state.direction===1?' ↑':' ↓'):''}</button><button type="button" data-campaign-search class="campaign-search-toggle${$('search').value.trim()?' is-active':''}" aria-label="Pesquisar campanhas" title="Pesquisar campanhas" aria-expanded="${state.searchOpen}" aria-controls="campaign-search-panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button>${columnButton}${hideSite?`<button type="button" data-campaign-grid class="campaign-search-toggle" aria-label="ROI dos últimos 10 dias" title="ROI dos últimos 10 dias" aria-haspopup="dialog" aria-controls="roi-grid-dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></button>`:''}</div>`:k==='final_urls'?t:`<button data-sort="${k}">${t}${state.sort===k?(state.direction===1?' ↑':' ↓'):''}</button>${k==='site'&&isSites?columnButton:''}`}</th>`).join('')+'</tr>';
  const roi=v=>v==null?'—':`<span class="roi-pill ${v<0?'loss':''}">${pct(v)}</span>`;
  $('table-body').innerHTML=rows.length?rows.map(r=>isSites?`<tr><td><button class="site-button" data-site="${esc(r.site)}"><strong>${esc(r.site)}</strong></button><small>Abrir campanhas ↗</small></td><td>${r.campaigns}</td><td>${money(r.cost)}</td><td${deductionTitle(r)}>${money(r.revenue)}</td><td class="${r.profit<0?'negative':'positive'}">${money(r.profit)}</td><td>${roi(r.roi)}</td>${gamCells(r)}<td><span class="status-tag ${r.pending?'':'ok'}">${r.pending?r.pending+' pendências':'Conciliado'}</span></td></tr>`:`<tr><td><div class="campaign-title-row"><a class="campaign-name campaign-report-link" data-campaign-report href="${esc(detailPath(r))}" title="Abrir relatório de ${esc(r.name)}">${esc(r.name)}</a><div class="campaign-row-actions">${infoButton(r)}<button type="button" class="campaign-info-button campaign-quick-roi-button" data-quick-roi-account="${esc(r.account)}" data-quick-roi-campaign="${esc(r.campaign)}" data-quick-roi-name="${esc(r.name)}" data-quick-roi-site="${esc(r.site||'Sem site identificado')}" aria-label="ROI dos últimos sete dias de ${esc(r.name)}" aria-haspopup="dialog" aria-expanded="false" aria-controls="campaign-quick-roi"><svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 12V8m5 4V4m5 8V6"/></svg></button></div></div><small class="campaign-meta">${googleAdsID(r,{showType:true})}${finalURLCell(r)}${budgetButton(r)}</small></td>${hideSite?'':`<td><span class="domain">${esc(r.site||'Não identificado')}</span></td>`}<td>${money(r.cost)}</td><td${deductionTitle(r)}>${money(r.revenue)}</td><td class="${r.profit==null?'':r.profit<0?'negative':'positive'}">${money(r.profit)}</td><td>${roi(r.roi)}</td>${campaignMetricCells(r)}</tr>`).join(''):'<tr><td colspan="'+columns.length+'" class="empty">'+(state.run?'Nenhum resultado para os filtros selecionados.':'Sincronize as fontes para analisar seus resultados.')+'</td></tr>';
  const adsTotals=adsMetrics(rows.flatMap(r=>r.ads_original||[]),state.run?.result?.rates),gamTotals=gamMetrics((isSites?(state.run?.result?.rows||[]).filter(r=>r.comparable&&rows.some(g=>(r.site||'Sem site identificado')===g.site)):rows).flatMap(r=>r.gam_original||[]),state.run?.result?.rates),cost=rows.reduce((s,r)=>s+(r.cost||0),0),revenue=rows.reduce((s,r)=>s+(r.revenue||0),0),confirmed=rows.filter(r=>isSites?r.compared>0:r.comparable),matchedCost=confirmed.reduce((s,r)=>s+r.cost,0),profit=confirmed.reduce((s,r)=>s+(r.profit||0),0);

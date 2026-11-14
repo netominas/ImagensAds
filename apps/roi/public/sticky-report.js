@@ -12,7 +12,10 @@ export function stickyReportHeader(panel){
   floating.hidden=!visible;if(!visible)return;
   if(dirty){
    copy.replaceChildren(head.cloneNode(true));copy.tHead.removeAttribute('id');copy.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
-   copy.querySelectorAll('button').forEach((button,index)=>{button.tabIndex=-1;button.onclick=()=>head.querySelectorAll('button')[index]?.click();});dirty=false;
+   copy.querySelectorAll('button').forEach((button,index)=>{
+    button.tabIndex=-1;
+    if(!button.hasAttribute('popovertarget'))button.onclick=()=>head.querySelectorAll('button')[index]?.click();
+   });dirty=false;
   }
   floating.style.left=left+'px';floating.style.width=(right-left)+'px';floating.style.top=Math.min(0,bounds.bottom-header.height)+'px';floating.style.height=header.height+'px';
   copy.style.width=bounds.width+'px';copy.style.transform='translateX('+(bounds.left-left)+'px)';
