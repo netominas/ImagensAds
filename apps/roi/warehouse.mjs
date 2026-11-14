@@ -49,10 +49,12 @@ export function createROIWarehouse(db,{now=()=>new Date().toISOString()}={}){
    target.push(...db.prepare('SELECT data FROM roi_daily_facts WHERE kind=? AND source=? AND day BETWEEN ? AND ? ORDER BY day,ordinal').all(storedKind,source,scope.start,scope.end).map(r=>JSON.parse(r.data)));
   }
   const rates=Object.fromEntries(db.prepare('SELECT day,data FROM roi_fx_days WHERE day BETWEEN ? AND ?').all(scope.start,scope.end).map(r=>[r.day,JSON.parse(r.data)]));
+  const missingFxDays=[...new Set([...costs,...revenues].filter(fact=>fact.currency==='USD'&&!rates[fact.date]).map(fact=>fact.date))].sort();
+  if(missingFxDays.length)warnings.push('Falta cotação PTAX para '+missingFxDays.length+' dia(s) com dados em dólar. Os valores em reais seguem disponíveis.');
   if(missing)warnings.unshift(adsKind==='ads-script'?'O período ainda tem dias sem dados do Script ou do Ad Manager. Lucro e ROI aguardam cobertura completa.':'O período ainda não foi totalmente importado. Para importar o período, use Atualizar agora. Lucro e ROI aguardam cobertura completa.');
   const result=reconcile(costs,revenues,rates,rules,{partial:missing>0});timestamps.sort();
   for(const row of result.rows){row.missing_cost_days=missingBySource.get('ads:'+row.account)||[];row.missing_revenue_days=[...new Set(scope.networks.flatMap(id=>missingBySource.get('gam:'+id)||[]))];}
-  return {...result,warnings,sources,rates,currency:'BRL',revenue_metric:'AD_EXCHANGE_LINE_ITEM_LEVEL_REVENUE',revenue_label:'Receita estimada Ad Exchange',start:scope.start,end:scope.end,updated_at:timestamps.at(-1)||null,oldest_collection:timestamps[0]||null,cost_records:costs.length,revenue_records:revenues.length,database:true,revision:revision(),data_coverage:{complete:missing===0,missing_days:missing,stale_days:stale},report_ids:[]};
+  return {...result,warnings,sources,rates,missing_fx_days:missingFxDays,currency:'BRL',revenue_metric:'AD_EXCHANGE_LINE_ITEM_LEVEL_REVENUE',revenue_label:'Receita estimada Ad Exchange',start:scope.start,end:scope.end,updated_at:timestamps.at(-1)||null,oldest_collection:timestamps[0]||null,cost_records:costs.length,revenue_records:revenues.length,database:true,revision:revision(),data_coverage:{complete:missing===0,missing_days:missing,stale_days:stale},report_ids:[]};
  }
  return {meta,putMeta,revision,touch:bump,saveSource,failSource,saveRates,read,missingRanges,sourceDays};
 }

@@ -21,6 +21,7 @@ import {costFacts} from './ads.mjs';
 import {importScriptReport} from './script-report.mjs';
 import {revenueFacts,site} from './model.mjs';
 const id=()=>randomBytes(16).toString('hex');
+const fxWarning='Não foi possível atualizar o câmbio. As cotações válidas armazenadas foram preservadas.';
 const hashScriptToken=token=>createHash('sha256').update(token).digest('hex');
 function adsCollectionError(error){
  if(error instanceof AdsError){
@@ -70,7 +71,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   return {...(dates?{start:body.start,end:body.end}:{}),accounts:body.accounts,networks:body.networks};
  }
  function getRun(rid){if(!/^[a-f0-9]{32}$/.test(rid||''))throw new AdsError('Sincronização inválida.',{status:400});const r=db.prepare('SELECT * FROM roi_runs WHERE id=?').get(rid);if(!r)throw new AdsError('Relatório não encontrado.',{status:404});return {...r,config:JSON.parse(r.config),result:r.result?applyDeductions(JSON.parse(r.result),deductions.read()):null};}
- function databaseReport(scope){const result=applyDeductions(warehouse.read(scope,links(),warehouse.meta('catalog')||{}),deductions.read());result.warnings.push(...(warehouse.meta('collection_warnings')||[]));return {id:'database',database:true,status:'done',start:scope.start,end:scope.end,config:{...scope,links:links()},result};}
+ function databaseReport(scope){const result=applyDeductions(warehouse.read(scope,links(),warehouse.meta('catalog')||{}),deductions.read());result.warnings.push(...(warehouse.meta('collection_warnings')||[]).filter(warning=>warning!==fxWarning));return {id:'database',database:true,status:'done',start:scope.start,end:scope.end,config:{...scope,links:links()},result};}
  function runningJob(){return db.prepare("SELECT id,progress FROM roi_runs WHERE status='running' ORDER BY created DESC LIMIT 1").get()||null;}
  function launch(scope,{mode='manual',plan=null}={}){
   if(active)throw new AdsError('Há uma atualização em andamento.',{status:409});active=true;
@@ -92,7 +93,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
    if(!keysCache.has(network.id))keysCache.set(network.id,await admanager.keys(network.id));const key=keysCache.get(network.id).find(k=>k.name==='utm_campaign');if(!key||key.reportableType==='OFF')throw new AdsError('utm_campaign não está habilitada nesta rede.');
    const report=await admanager.report(network.id,{start:task.start,end:task.end,key:key.id,mode:String(key.reportableType).includes('DIMENSION')?'CUSTOM_DIMENSION':'CUSTOM_CRITERIA',progress:m=>progress(network.name+': '+m)});warehouse.saveSource('gam',task.source,task.start,task.end,revenueFacts(report,network));
   }catch(e){warehouse.failSource('gam',task.source,task.start,task.end,e instanceof AdsError?e.message:'Não foi possível consultar a rede Ad Manager.');}}
-  let fxError='';try{progress('Atualizando cotação diária…');warehouse.saveRates(await rates(scope.start,scope.end));}catch{fxError='Não foi possível atualizar o câmbio. As cotações válidas armazenadas foram preservadas.';}
+  let fxError='';try{progress('Atualizando cotação diária…');warehouse.saveRates(await rates(scope.start,scope.end));}catch{fxError=fxWarning;}
   const result=warehouse.read(scope,rules,data);if(catalogError)result.warnings.push(catalogError);if(fxError)result.warnings.push(fxError);
   const manual=getRun(run).config.mode==='manual',stored=manual?result:{database:true,data_coverage:result.data_coverage,warnings:result.warnings,updated_at:result.updated_at,sources:result.sources};warehouse.putMeta('collection_warnings',[catalogError,fxError].filter(Boolean));
   db.prepare("UPDATE roi_runs SET status='done',result=?,progress='Concluído',finished=? WHERE id=?").run(JSON.stringify(stored),new Date().toISOString(),run);warehouse.putMeta('last_collection',{at:new Date().toISOString(),run,complete:result.data_coverage.complete,stale:result.data_coverage.stale_days>0});return {complete:result.data_coverage.complete&&!result.data_coverage.stale_days&&!fxError&&!catalogError};
@@ -211,6 +212,16 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
    if(!['POST','DELETE'].includes(method))return authJSON({error:'Método não permitido.'},405);
    if(!request.headers.get('content-type')?.startsWith('application/json'))return authJSON({error:'Envie JSON.'},415);
    let body;try{body=await request.json();}catch{throw new AdsError('JSON inválido.',{status:400});}if(!body||typeof body!=='object'||Array.isArray(body))throw new AdsError('Dados inválidos.',{status:400});
+   if(path==='/fx/refresh'&&method==='POST'){
+    if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);
+    const {start,end}=body;
+    dateRange(start,end);
+    if(end>today())throw new AdsError('A data final não pode estar no futuro.',{status:400});
+    let quotes;
+    try{quotes=await rates(start,end);}catch{throw new AdsError(fxWarning);}
+    warehouse.saveRates(quotes);
+    return authJSON({days:Object.keys(quotes).length});
+   }
    if(path==='/automacoes'&&method==='POST'){
     if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);
     const keys=Object.keys(automationDefaults);

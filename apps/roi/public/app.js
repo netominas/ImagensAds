@@ -53,6 +53,7 @@ function showReportNotices(messages) {
  if (section.hidden) section.open = false;
  $('report-notice-count').textContent = unique.length ? `(${unique.length})` : '';
  $('notice').textContent = unique.join('\n');
+ $('refresh-fx').hidden=viewer.role!=='admin'||state.view==='networks'||state.archive||!state.run?.result?.missing_fx_days?.length;
 }
 function notices(){if(state.view==='networks'){showReportNotices(state.messages);return;}const messages=[...state.messages,...(state.run?.result?.warnings||[])];if(state.run?.result?.rows?.some(r=>!Array.isArray(r.gam_original)))messages.unshift('Sincronize para carregar eCPM, CPC e PMR. Este relatório foi salvo antes da inclusão dessas métricas.');if(state.run?.result?.rows?.some(r=>!Array.isArray(r.ads_original)))messages.unshift('Sincronize para carregar Taxa de conversão e Custo por conversão do Google Ads.');if(state.archive&&scopeChanged())messages.unshift('Este é um relatório histórico. Selecione Dados atuais para consultar o banco com outros filtros.');if(!state.archive&&state.run&&scopeChanged()&&!state.loading)messages.unshift('Os filtros diferem do período exibido. Confira as datas e as fontes selecionadas.');if(state.run?.result?.partial)messages.unshift(state.archive?'Coleta incompleta neste relatório histórico. Selecione Dados atuais para consultar o banco.':'Importação em andamento ou pendente: lucro e ROI aguardam a cobertura completa. Consulte as fontes abaixo.');showReportNotices(messages);}
 function scopeChanged(){if(!state.run)return false;const c=state.run.config;return $('start').value!==c.start||$('end').value!==c.end||JSON.stringify(selectValues('accounts').sort())!==JSON.stringify([...c.accounts].sort())||JSON.stringify(selectValues('networks').sort())!==JSON.stringify([...c.networks].sort());}
@@ -363,6 +364,15 @@ async function init(){
  try{const [catalog,status]=await Promise.all([api('/catalog'),api('/status')]);applyCatalog(catalog);showAutomatic(status);await refreshHistory();const archived=params.get('run');if(utilityView())render();else if(archived&&archived!=='database')showRun(await api('/run?id='+archived),true);else await loadDatabase();if(status.running&&!state.watching)void watch(status.running.id);setInterval(()=>void pollDatabase(),60000);}
  catch(e){$('workspace-summary').textContent='Fontes indisponíveis';state.messages=[e.message];notices();}
 }
+$('refresh-fx').onclick=async()=>{
+ const button=$('refresh-fx'),days=state.run?.result?.missing_fx_days;
+ if(button.disabled||!days?.length)return;
+ button.disabled=true;
+ button.textContent='Atualizando câmbio…';
+ try{await api('/fx/refresh',{start:days[0],end:days.at(-1)});await loadDatabase();}
+ catch(error){state.messages=[error.message];notices();}
+ finally{button.disabled=false;button.textContent='Atualizar câmbio';}
+};
 $('sync').onclick=async()=>{if(readOnly){await loadDatabase();return;}if(state.busy)return;selectDatabase();try{state.messages=[];const pending=await api('/sync',reportScope());void watch(pending.id);}catch(e){state.messages=[e.message];notices();}};
 $('period').onchange=()=>{dates();queueReport();};for(const id of ['start','end'])$(id).onchange=()=>{$('period').value='custom';queueReport();};for(const id of ['accounts','networks'])$(id).onchange=()=>queueReport(true);
 $('site').onchange=()=>{const url=new URL(location.href),selected=$('site').value;if(selected)url.searchParams.set('site',selected);else url.searchParams.delete('site');navigate(url.pathname+url.search);};$('match-filter').onchange=()=>render();$('day-result').onchange=()=>render();$('search').oninput=()=>renderTable();

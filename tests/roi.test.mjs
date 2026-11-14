@@ -56,6 +56,20 @@ test('BCB quotes use sale rates and fall back to the last published business day
  assert.equal(rates['2025-01-03'].rate,6.1);assert.equal(rates['2025-01-05'].rate,6.1);assert.equal(rates['2025-01-05'].quote_date,'2025-01-03');assert.equal(rates['2025-01-05'].previous_day,true);
 });
 
+test('BCB series 1 supplies the official PTAX when Olinda is unavailable',async()=>{
+ const hosts=[];
+ const quotes=await dollarRates('2026-11-14','2026-11-14',async url=>{
+  hosts.push(url.hostname);
+  if(url.hostname==='olinda.bcb.gov.br')return new Response(null,{status:503});
+  assert.equal(url.searchParams.get('dataFinal'),'14/11/2026');
+  return Response.json([{data:'13/11/2026',valor:'5.6518'}]);
+ });
+ assert.deepEqual(hosts,['olinda.bcb.gov.br','api.bcb.gov.br']);
+ assert.equal(quotes['2026-11-14'].rate,5.6518);
+ assert.equal(quotes['2026-11-14'].quote_date,'2026-11-13');
+ assert.equal(quotes['2026-11-14'].previous_day,true);
+});
+
 test('Ads costs reconcile campaign totals with ad and PMax details without duplication',async()=>{
  const google={async search(cid,q){if(q.includes('FROM customer'))return [{customer:{currencyCode:'BRL',timeZone:'America/Sao_Paulo',trackingUrlTemplate:'{lpurl}?utm_campaign={campaignid}'}}];
  if(q.includes('FROM ad_group_ad'))return [{campaign:{id:'111'},segments:{date},metrics:{costMicros:'10000000'},adGroupAd:{ad:{finalUrls:['https://exemplo.com.br/']}}}];
@@ -73,12 +87,13 @@ test('ROI shares login, blocks private files and cross-origin changes, persists 
  const collectionOrder=[];
  const gam={networks:async()=>[{id:'1234',name:'Rede',currency:'BRL',timezone:'America/Sao_Paulo'}],keys:async()=>{collectionOrder.push('gam-start');return [{id:'1',name:'utm_campaign',reportableType:'ON'}];},report:async()=>({mode:'CUSTOM_CRITERIA',key:'1',report_id:'77',rows:[csv()]})};
  const env={ADMIN_EMAIL:'roi@example.test',ADMIN_PASSWORD_HASH:await hashPassword('roi-test-password-only')};
+ let refreshRates=false;
  const loadCosts=async()=>{
   await new Promise(resolve=>setImmediate(resolve));
   collectionOrder.push('ads-finish');
   return [cost({final_urls:['https://exemplo.com.br/pagina/']})];
  };
- const server=createAppServer({env,storage,authStore:storage.store('auth'),googleAds:google,roiOptions:{admanager:gam,loadCosts,rates:async()=>({})}});await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port,prefix='/apps/roi/api';let cookie,run;
+ const server=createAppServer({env,storage,authStore:storage.store('auth'),googleAds:google,roiOptions:{admanager:gam,loadCosts,rates:async()=>refreshRates?{[date]:{rate:6.1,quote_date:date}}:{}}});await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port,prefix='/apps/roi/api';let cookie,run;
  const request=(path,body,origin=base)=>fetch(base+path,{method:body?'POST':'GET',redirect:'manual',headers:{'Content-Type':'application/json',Origin:origin,...(cookie?{Cookie:cookie}:{})},...(body?{body:JSON.stringify(body)}:{})});
  try{
   for(const path of ['/apps/roi/','/apps/roi/sites','/apps/roi/vinculos','/apps/roi/redes','/apps/roi/pagamentos'])assert.equal((await request(path)).status,303);
@@ -94,6 +109,12 @@ test('ROI shares login, blocks private files and cross-origin changes, persists 
   const r=await request(prefix+'/sync',{start:date,end:date,accounts:[account],networks:['1234']});assert.equal(r.status,202);const job=await r.json();
   for(let attempt=0;attempt<50;attempt++){run=await(await request(prefix+'/run?id='+job.id)).json();if(run.status!=='running')break;await new Promise(r=>setTimeout(r,5));}
   assert.equal(run.status,'done');assert.equal(run.result.totals.profit,5);assert.equal(run.result.rows[0].name,'Campanha');assert.equal(run.result.sites[0].site,'exemplo.com.br');assert.equal(run.result.revenue_label,'Receita estimada Ad Exchange');
+  assert.deepEqual(collectionOrder,['ads-finish','gam-start']);
+  refreshRates=true;
+  assert.equal((await request(prefix+'/fx/refresh',{start:date,end:date},'https://evil.example')).status,403);
+  assert.deepEqual(await (await request(prefix+'/fx/refresh',{start:date,end:date})).json(),{days:1});
+  const refreshed=await (await request(prefix+'/report?start='+date+'&end='+date)).json();
+  assert.equal(refreshed.result.rates[date].rate,6.1);
   assert.deepEqual(collectionOrder,['ads-finish','gam-start']);
   assert.deepEqual(run.result.rows[0].final_urls,['https://exemplo.com.br/pagina/']);
   const rule={network:'1234',site:'exemplo.com.br',utm:'promo',account,campaign:'111'};
