@@ -115,6 +115,8 @@ test('ROI shares login, blocks private files and cross-origin changes, persists 
   assert.deepEqual(await (await request(prefix+'/fx/refresh',{start:date,end:date})).json(),{days:1});
   const refreshed=await (await request(prefix+'/report?start='+date+'&end='+date)).json();
   assert.equal(refreshed.result.rates[date].rate,6.1);
+  assert.equal((await request(prefix+'/fx/manual',{day:date,quote_date:date,rate:6.2})).status,409);
+  assert.equal((await request(prefix+'/fx/manual',{day:'2025-01-04',quote_date:date,rate:6.1})).status,200);
   assert.deepEqual(collectionOrder,['ads-finish','gam-start']);
   assert.deepEqual(run.result.rows[0].final_urls,['https://exemplo.com.br/pagina/']);
   const rule={network:'1234',site:'exemplo.com.br',utm:'promo',account,campaign:'111'};

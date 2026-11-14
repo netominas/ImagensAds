@@ -222,6 +222,16 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
     warehouse.saveRates(quotes);
     return authJSON({days:Object.keys(quotes).length});
    }
+   if(path==='/fx/manual'&&method==='POST'){
+    if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);
+    const {day,quote_date,rate}=body;
+    dateRange(quote_date,day);
+    if(day>today()||quote_date<shiftDay(day,-7)||!Number.isFinite(rate)||rate<=0)
+     throw new AdsError('Informe a data e o valor da PTAX de venda publicada pelo Banco Central.',{status:400});
+    const quote={rate,quote_date,timestamp:quote_date,source:'BCB/PTAX venda (informada manualmente)',previous_day:quote_date!==day};
+    if(!warehouse.saveMissingRate(day,quote))throw new AdsError('Já existe uma cotação para este dia. Recarregue o relatório.',{status:409});
+    return authJSON({day});
+   }
    if(path==='/automacoes'&&method==='POST'){
     if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);
     const keys=Object.keys(automationDefaults);

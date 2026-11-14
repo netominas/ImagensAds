@@ -54,6 +54,12 @@ function showReportNotices(messages) {
  $('report-notice-count').textContent = unique.length ? `(${unique.length})` : '';
  $('notice').textContent = unique.join('\n');
  $('refresh-fx').hidden=viewer.role!=='admin'||state.view==='networks'||state.archive||!state.run?.result?.missing_fx_days?.length;
+ const manual=$('manual-fx'),select=$('manual-fx-day');
+ manual.hidden=$('refresh-fx').hidden;
+ if(manual.hidden){manual.open=false;$('manual-fx-form').reset();return;}
+ const days=state.run.result.missing_fx_days,selected=select.value;
+ select.replaceChildren(...days.map(day=>new Option(day.split('-').reverse().join('/'),day)));
+ if(days.includes(selected))select.value=selected;
 }
 function notices(){if(state.view==='networks'){showReportNotices(state.messages);return;}const messages=[...state.messages,...(state.run?.result?.warnings||[])];if(state.run?.result?.rows?.some(r=>!Array.isArray(r.gam_original)))messages.unshift('Sincronize para carregar eCPM, CPC e PMR. Este relatório foi salvo antes da inclusão dessas métricas.');if(state.run?.result?.rows?.some(r=>!Array.isArray(r.ads_original)))messages.unshift('Sincronize para carregar Taxa de conversão e Custo por conversão do Google Ads.');if(state.archive&&scopeChanged())messages.unshift('Este é um relatório histórico. Selecione Dados atuais para consultar o banco com outros filtros.');if(!state.archive&&state.run&&scopeChanged()&&!state.loading)messages.unshift('Os filtros diferem do período exibido. Confira as datas e as fontes selecionadas.');if(state.run?.result?.partial)messages.unshift(state.archive?'Coleta incompleta neste relatório histórico. Selecione Dados atuais para consultar o banco.':'Importação em andamento ou pendente: lucro e ROI aguardam a cobertura completa. Consulte as fontes abaixo.');showReportNotices(messages);}
 function scopeChanged(){if(!state.run)return false;const c=state.run.config;return $('start').value!==c.start||$('end').value!==c.end||JSON.stringify(selectValues('accounts').sort())!==JSON.stringify([...c.accounts].sort())||JSON.stringify(selectValues('networks').sort())!==JSON.stringify([...c.networks].sort());}
@@ -372,6 +378,18 @@ $('refresh-fx').onclick=async()=>{
  try{await api('/fx/refresh',{start:days[0],end:days.at(-1)});await loadDatabase();}
  catch(error){state.messages=[error.message];notices();}
  finally{button.disabled=false;button.textContent='Atualizar câmbio';}
+};
+$('manual-fx-form').onsubmit=async event=>{
+ event.preventDefault();
+ const form=event.currentTarget,submit=event.submitter;
+ if(submit.disabled)return;
+ submit.disabled=true;
+ try{
+  await api('/fx/manual',{day:$('manual-fx-day').value,quote_date:$('manual-fx-date').value,rate:$('manual-fx-rate').valueAsNumber});
+  form.reset();
+  await loadDatabase();
+ }catch(error){state.messages=[error.message];notices();}
+ finally{submit.disabled=false;}
 };
 $('sync').onclick=async()=>{if(readOnly){await loadDatabase();return;}if(state.busy)return;selectDatabase();try{state.messages=[];const pending=await api('/sync',reportScope());void watch(pending.id);}catch(e){state.messages=[e.message];notices();}};
 $('period').onchange=()=>{dates();queueReport();};for(const id of ['start','end'])$(id).onchange=()=>{$('period').value='custom';queueReport();};for(const id of ['accounts','networks'])$(id).onchange=()=>queueReport(true);

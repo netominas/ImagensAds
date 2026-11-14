@@ -30,6 +30,15 @@ export function createROIWarehouse(db,{now=()=>new Date().toISOString()}={}){
   db.exec('BEGIN IMMEDIATE');try{for(const day of daysBetween(start,end))save.run(kind,source,day,now(),String(message).slice(0,1500));bump();db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}
  }
  function saveRates(rates){const save=db.prepare('INSERT OR REPLACE INTO roi_fx_days VALUES (?,?,?)');db.exec('BEGIN IMMEDIATE');try{for(const [day,q]of Object.entries(rates))if(/^\d{4}-\d{2}-\d{2}$/.test(day)&&Number.isFinite(q.rate)&&q.rate>0)save.run(day,JSON.stringify(q),now());bump();db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}}
+ function saveMissingRate(day,quote){
+  db.exec('BEGIN IMMEDIATE');
+  try{
+   const {changes}=db.prepare('INSERT OR IGNORE INTO roi_fx_days VALUES (?,?,?)').run(day,JSON.stringify(quote),now());
+   if(changes)bump();
+   db.exec('COMMIT');
+   return Boolean(changes);
+  }catch(error){db.exec('ROLLBACK');throw error;}
+ }
  function sourceDays(kind,source,start,end){return db.prepare('SELECT * FROM roi_source_days WHERE kind=? AND source=? AND day BETWEEN ? AND ? ORDER BY day').all(kind,source,start,end);}
  function missingRanges(scope,{cooldown=300000,retryFailed=false}={}){
   const plan=[],days=daysBetween(scope.start,scope.end),clock=Date.parse(now());
@@ -56,5 +65,5 @@ export function createROIWarehouse(db,{now=()=>new Date().toISOString()}={}){
   for(const row of result.rows){row.missing_cost_days=missingBySource.get('ads:'+row.account)||[];row.missing_revenue_days=[...new Set(scope.networks.flatMap(id=>missingBySource.get('gam:'+id)||[]))];}
   return {...result,warnings,sources,rates,missing_fx_days:missingFxDays,currency:'BRL',revenue_metric:'AD_EXCHANGE_LINE_ITEM_LEVEL_REVENUE',revenue_label:'Receita estimada Ad Exchange',start:scope.start,end:scope.end,updated_at:timestamps.at(-1)||null,oldest_collection:timestamps[0]||null,cost_records:costs.length,revenue_records:revenues.length,database:true,revision:revision(),data_coverage:{complete:missing===0,missing_days:missing,stale_days:stale},report_ids:[]};
  }
- return {meta,putMeta,revision,touch:bump,saveSource,failSource,saveRates,read,missingRanges,sourceDays};
+ return {meta,putMeta,revision,touch:bump,saveSource,failSource,saveRates,saveMissingRate,read,missingRanges,sourceDays};
 }
