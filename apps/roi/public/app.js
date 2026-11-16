@@ -46,6 +46,10 @@ const budgetsUI=budgetEditor({api,readOnly,onChanged:async()=>{recentUI.invalida
 const infoButton=r=>`<button type="button" class="campaign-info-button" data-recent-account="${esc(r.account)}" data-recent-campaign="${esc(r.campaign)}" data-recent-name="${esc(r.name)}" aria-label="Alterações recentes de ${esc(r.name)}" aria-haspopup="dialog" aria-expanded="false" aria-controls="recent-changes-card"><span aria-hidden="true">i</span></button>`;
 const budgetButton=r=>`<${readOnly?'span':'button type="button"'} class="campaign-budget-button" data-budget-account="${esc(r.account)}" data-budget-campaign="${esc(r.campaign)}" title="Orçamento da campanha">…</${readOnly?'span':'button'}>`;
 const gridUI=roiGridPanel({api,readOnly,finalURLCell,infoButton,recentUI});
+function fxDaysToRefresh(){
+ const report=state.run?.result;
+ return [...(report?.missing_fx_days||[]),...(report?.cached_fx_days||[])].sort();
+}
 function showReportNotices(messages) {
  const unique = [...new Set(messages)];
  const section = $('report-notices');
@@ -53,11 +57,12 @@ function showReportNotices(messages) {
  if (section.hidden) section.open = false;
  $('report-notice-count').textContent = unique.length ? `(${unique.length})` : '';
  $('notice').textContent = unique.join('\n');
- $('refresh-fx').hidden=viewer.role!=='admin'||state.view==='networks'||state.archive||!state.run?.result?.missing_fx_days?.length;
+ const days=fxDaysToRefresh();
+ $('refresh-fx').hidden=viewer.role!=='admin'||state.view==='networks'||state.archive||!days.length;
  const manual=$('manual-fx'),select=$('manual-fx-day');
  manual.hidden=$('refresh-fx').hidden;
  if(manual.hidden){manual.open=false;$('manual-fx-form').reset();return;}
- const days=state.run.result.missing_fx_days,selected=select.value;
+ const selected=select.value;
  select.replaceChildren(...days.map(day=>new Option(day.split('-').reverse().join('/'),day)));
  if(days.includes(selected))select.value=selected;
 }
@@ -90,7 +95,7 @@ function renderMetrics(){if(state.view==='campaign'){renderCampaignMetrics();ret
  $('k-cost').textContent=has?money(cost):'—';$('k-revenue').textContent=has?money(revenue):'—';$('k-profit').textContent=has?money(profit):'—';$('k-roi').textContent=has&&cost>0?pct(profit/cost):'—';for(const id of ['k-profit','k-roi'])$(id).className=has?(profit<0?'negative':'positive'):'';
  const all=(state.run?.result?.rows||[]).filter(r=>matchesSite(r)),pending=(state.run?.result?.pending||[]).filter(r=>matchesSite(r)),pendingCost=all.filter(r=>!r.comparable).reduce((s,r)=>s+r.cost,0),pendingRevenue=pending.reduce((s,r)=>s+(r.revenue_brl||0),0);
  $('coverage-title').textContent=state.run?`${rows.length} de ${all.length} vínculos confirmados`:'Aguardando conciliação';$('coverage-bar').style.width=(all.length?rows.length/all.length*100:0)+'%';$('coverage-copy').textContent='Os indicadores mostram somente os vínculos confirmados. Valores com pendências ficam fora do lucro e do ROI.';$('pending-cost').textContent=state.run&&!all.some(r=>r.cost_fx_missing)?money(pendingCost):'—';$('pending-revenue').textContent=state.run&&!pending.some(r=>r.revenue_brl===null)?money(pendingRevenue):'—';
- const quotes=Object.values(state.run?.result?.rates||{});$('fx-label').textContent=quotes.length?'PTAX venda · por dia':'Sem conversão USD no relatório';drawChart(rows);
+ const quotes=Object.values(state.run?.result?.rates||{});$('fx-label').textContent=quotes.some(quote=>quote.cached)?'PTAX provisória · última disponível':quotes.length?'PTAX venda · por dia':'Sem conversão USD no relatório';drawChart(rows);
 }
 function drawChart(rows){const result=state.run?.result;if(!result||!rows.length){$('chart').textContent='Confirme os vínculos para visualizar a evolução.';return;}const points=new Map(),convert=r=>r.currency==='BRL'?r.amount:r.currency==='USD'&&result.rates[r.date]?r.amount*result.rates[r.date].rate:0;
  for(const r of rows){for(const [kind,entries]of [['cost',r.cost_original],['revenue',r.revenue_original]])for(const e of entries){if(!points.has(e.date))points.set(e.date,{date:e.date,cost:0,revenue:0});points.get(e.date)[kind]+=convert(e);}}
@@ -324,9 +329,10 @@ function showRun(run,applyScope=false){
   return [label+' · '+(latest?collectedAt(latest):'sem coleta válida')+(pending?' ('+pending+' com pendência)':'')];
  });
  $('updated').textContent=sourceTimes.length?'Última coleta por fonte · '+sourceTimes.join(' | '):'Aguardando primeira coleta';
+ if(r.cached_fx_days?.length)$('updated').textContent+=' · Câmbio provisório';
  $('footer-state').textContent=state.archive?'Relatório histórico preservado':r.partial?'Importação incompleta · consulte as fontes':r.data_coverage?.stale_days?'Dados preservados · há fontes atrasadas':'Consulta ao banco local · receita estimada';
  $('sources-summary').innerHTML='<strong>Fontes e cobertura do período</strong><ul>'+r.sources.map(s=>'<li>'+esc(s.kind==='gam'?'Ad Manager':'Google Ads')+' · '+esc(s.name)+' ('+esc(s.id)+'): '+(s.stale?'coleta atrasada; dados preservados':s.ok?'dados disponíveis':esc(s.missing_days||'')+' dia(s) pendente(s)')+' · Última coleta válida · '+esc(collectedAt(s))+'</li>').join('')+'</ul>';
- $('rates-summary').innerHTML='<strong>Dólar usado · <a href="https://www.bcb.gov.br/estabilidadefinanceira/historicocotacoes" target="_blank" rel="noopener">Banco Central / PTAX venda</a></strong><ul>'+Object.entries(r.rates).map(([day,q])=>'<li>'+esc(day)+': US$ 1 = R$ '+q.rate.toFixed(4)+' · cotação de '+esc(q.quote_date)+(q.previous_day?' (última disponível)':'')+'</li>').join('')+'</ul>';render();
+ $('rates-summary').innerHTML='<strong>Dólar usado · <a href="https://www.bcb.gov.br/estabilidadefinanceira/historicocotacoes" target="_blank" rel="noopener">Banco Central / PTAX venda</a></strong><ul>'+Object.entries(r.rates).map(([day,q])=>'<li>'+esc(day)+': US$ 1 = R$ '+q.rate.toFixed(4)+' · cotação de '+esc(q.quote_date)+(q.cached?' (provisória, armazenada)':q.previous_day?' (última disponível)':'')+'</li>').join('')+'</ul>';render();
 }
 function applyCatalog(catalog,selected){
  const previousLinks={account:$('link-account').value,network:$('link-network').value};
@@ -371,8 +377,8 @@ async function init(){
  catch(e){$('workspace-summary').textContent='Fontes indisponíveis';state.messages=[e.message];notices();}
 }
 $('refresh-fx').onclick=async()=>{
- const button=$('refresh-fx'),days=state.run?.result?.missing_fx_days;
- if(button.disabled||!days?.length)return;
+ const button=$('refresh-fx'),days=fxDaysToRefresh();
+ if(button.disabled||!days.length)return;
  button.disabled=true;
  button.textContent='Atualizando câmbio…';
  try{await api('/fx/refresh',{start:days[0],end:days.at(-1)});await loadDatabase();}

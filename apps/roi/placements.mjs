@@ -51,10 +51,11 @@ export function createPlacements(db,{google,admanager,catalog,settings,warehouse
    for(const r of records){if(!r.data)continue;times.push(r.updated);const data=JSON.parse(r.data);if(kind==='ads'){ads.push(...data.placements);totals.push(...data.totals);}else revenues.push(...data.facts.filter(f=>f.campaign===campaign));}
   }
   const owned=stored('ads',source(account,campaign),start,end).some(r=>r.data&&['DISPLAY','DEMAND_GEN'].includes(JSON.parse(r.data).type));if(!owned)revenues.length=0;
-  const rates=Object.fromEntries(db.prepare('SELECT day,data FROM roi_fx_days WHERE day BETWEEN ? AND ?').all(start,end).map(r=>[r.day,JSON.parse(r.data)]));
+  const rates=warehouse.readRates(start,end);
   const collision=Boolean(db.prepare("SELECT 1 FROM roi_daily_facts WHERE kind='ads' AND json_extract(data,'$.campaign')=? AND source!=? LIMIT 1").get(campaign,account));
   if(reader&&collision)revenues.length=0;
   const report=placementReport({...body,ads,revenues,totals,rates,complete,stale,collision,baseline:baseline?.(body)}),job=db.prepare('SELECT status,progress,error,start,end,created,finished FROM roi_placement_jobs WHERE account=? AND campaign=? ORDER BY created DESC LIMIT 1').get(account,campaign)||null;
+  if([...ads,...totals,...revenues].some(fact=>fact.currency==='USD'&&rates[fact.date]?.cached))report.warnings.push('Conversão provisória pela última PTAX disponível no banco.');
   const publicSources=reader?[{name:'Google Ads',complete:sources[0]?.complete||false,error:sources[0]?.error||null},{name:'Ad Manager',complete:sources.slice(1).length>0&&sources.slice(1).every(s=>s.complete),error:sources.slice(1).some(s=>s.error)?'Uma fonte de receita não pôde ser atualizada.':null}]:sources;
   return {...report,sources:publicSources,updated_at:times.sort().at(-1)||null,job:job?.status==='running'?{...job,progress:'Atualizando placements e receita por utm_content…'}:job,currency:'BRL',scope:'Campanha inteira · todos os sites',supported:ads.length||totals.length?true:null};
  }

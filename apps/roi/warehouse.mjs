@@ -29,7 +29,36 @@ export function createROIWarehouse(db,{now=()=>new Date().toISOString()}={}){
   const save=db.prepare('INSERT INTO roi_source_days(kind,source,day,last_attempt,error) VALUES (?,?,?,?,?) ON CONFLICT(kind,source,day) DO UPDATE SET last_attempt=excluded.last_attempt,error=excluded.error');
   db.exec('BEGIN IMMEDIATE');try{for(const day of daysBetween(start,end))save.run(kind,source,day,now(),String(message).slice(0,1500));bump();db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}
  }
- function saveRates(rates){const save=db.prepare('INSERT OR REPLACE INTO roi_fx_days VALUES (?,?,?)');db.exec('BEGIN IMMEDIATE');try{for(const [day,q]of Object.entries(rates))if(/^\d{4}-\d{2}-\d{2}$/.test(day)&&Number.isFinite(q.rate)&&q.rate>0)save.run(day,JSON.stringify(q),now());bump();db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}}
+ function saveRates(rates){
+  const save=db.prepare(`INSERT INTO roi_fx_days VALUES (?,?,?)
+   ON CONFLICT(day) DO UPDATE SET data=excluded.data,updated=excluded.updated
+   WHERE coalesce(json_extract(excluded.data,'$.quote_date'),'')
+      >= coalesce(json_extract(roi_fx_days.data,'$.quote_date'),'')`);
+  db.exec('BEGIN IMMEDIATE');
+  try{
+   let changed=0;
+   for(const [day,q]of Object.entries(rates))if(/^\d{4}-\d{2}-\d{2}$/.test(day)&&Number.isFinite(q.rate)&&q.rate>0)changed+=Number(save.run(day,JSON.stringify(q),now()).changes);
+   if(changed)bump();
+   db.exec('COMMIT');
+  }catch(error){db.exec('ROLLBACK');throw error;}
+ }
+ function readRates(start,end){
+  const days=daysBetween(start,end),first=shiftDay(start,-7);
+  const stored=db.prepare('SELECT day,data FROM roi_fx_days WHERE day BETWEEN ? AND ? ORDER BY day').all(first,end)
+   .map(row=>({day:row.day,quote:JSON.parse(row.data)}));
+  const rates={};
+  let latest=null,index=0;
+  for(const day of days){
+   while(index<stored.length&&stored[index].day<=day){
+    const {quote}=stored[index++];
+    if(Number.isFinite(quote.rate)&&quote.rate>0&&quote.quote_date<=day&&(!latest||quote.quote_date>=latest.quote_date))latest=quote;
+   }
+   const exact=stored[index-1];
+   if(exact?.day===day)rates[day]=exact.quote;
+   else if(latest&&latest.quote_date>=shiftDay(day,-7))rates[day]={...latest,previous_day:true,cached:true};
+  }
+  return rates;
+ }
  function saveMissingRate(day,quote){
   db.exec('BEGIN IMMEDIATE');
   try{
@@ -57,13 +86,15 @@ export function createROIWarehouse(db,{now=()=>new Date().toISOString()}={}){
    if(failed.length)warnings.push(`${kind==='ads'?'Google Ads':'Ad Manager'} · ${name}: a última coleta falhou. Dados válidos já armazenados foram preservados. ${failed[0].error}`);
    target.push(...db.prepare('SELECT data FROM roi_daily_facts WHERE kind=? AND source=? AND day BETWEEN ? AND ? ORDER BY day,ordinal').all(storedKind,source,scope.start,scope.end).map(r=>JSON.parse(r.data)));
   }
-  const rates=Object.fromEntries(db.prepare('SELECT day,data FROM roi_fx_days WHERE day BETWEEN ? AND ?').all(scope.start,scope.end).map(r=>[r.day,JSON.parse(r.data)]));
-  const missingFxDays=[...new Set([...costs,...revenues].filter(fact=>fact.currency==='USD'&&!rates[fact.date]).map(fact=>fact.date))].sort();
+  const rates=readRates(scope.start,scope.end);
+  const usdDays=[...new Set([...costs,...revenues].filter(fact=>fact.currency==='USD').map(fact=>fact.date))].sort();
+  const missingFxDays=usdDays.filter(day=>!rates[day]),cachedFxDays=usdDays.filter(day=>rates[day]?.cached);
   if(missingFxDays.length)warnings.push('Falta cotação PTAX para '+missingFxDays.length+' dia(s) com dados em dólar. Os valores em reais seguem disponíveis.');
+  if(cachedFxDays.length)warnings.push('Conversão provisória em '+cachedFxDays.length+' dia(s) com a última PTAX disponível no banco. Os valores serão recalculados quando a cotação for atualizada.');
   if(missing)warnings.unshift(adsKind==='ads-script'?'O período ainda tem dias sem dados do Script ou do Ad Manager. Lucro e ROI aguardam cobertura completa.':'O período ainda não foi totalmente importado. Para importar o período, use Atualizar agora. Lucro e ROI aguardam cobertura completa.');
   const result=reconcile(costs,revenues,rates,rules,{partial:missing>0});timestamps.sort();
   for(const row of result.rows){row.missing_cost_days=missingBySource.get('ads:'+row.account)||[];row.missing_revenue_days=[...new Set(scope.networks.flatMap(id=>missingBySource.get('gam:'+id)||[]))];}
-  return {...result,warnings,sources,rates,missing_fx_days:missingFxDays,currency:'BRL',revenue_metric:'AD_EXCHANGE_LINE_ITEM_LEVEL_REVENUE',revenue_label:'Receita estimada Ad Exchange',start:scope.start,end:scope.end,updated_at:timestamps.at(-1)||null,oldest_collection:timestamps[0]||null,cost_records:costs.length,revenue_records:revenues.length,database:true,revision:revision(),data_coverage:{complete:missing===0,missing_days:missing,stale_days:stale},report_ids:[]};
+  return {...result,warnings,sources,rates,missing_fx_days:missingFxDays,cached_fx_days:cachedFxDays,currency:'BRL',revenue_metric:'AD_EXCHANGE_LINE_ITEM_LEVEL_REVENUE',revenue_label:'Receita estimada Ad Exchange',start:scope.start,end:scope.end,updated_at:timestamps.at(-1)||null,oldest_collection:timestamps[0]||null,cost_records:costs.length,revenue_records:revenues.length,database:true,revision:revision(),data_coverage:{complete:missing===0,missing_days:missing,stale_days:stale},report_ids:[]};
  }
- return {meta,putMeta,revision,touch:bump,saveSource,failSource,saveRates,saveMissingRate,read,missingRanges,sourceDays};
+ return {meta,putMeta,revision,touch:bump,saveSource,failSource,saveRates,saveMissingRate,readRates,read,missingRanges,sourceDays};
 }

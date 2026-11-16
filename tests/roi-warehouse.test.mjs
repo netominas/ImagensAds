@@ -28,6 +28,32 @@ test('local queries isolate source and period and join multiple networks without
  assert.equal(store.read(scope).totals.revenue,15);const both=store.read({...scope,networks:[network,'5678']});assert.equal(both.totals.cost,10);assert.equal(both.totals.revenue,25);assert.equal(both.totals.profit,15);
  }finally{db.close();}
 });
+test('ROI uses the last stored PTAX provisionally until the daily quote arrives',()=>{
+ const db=new DatabaseSync(':memory:');
+ try{
+  const store=createROIWarehouse(db),friday='2026-11-13',sunday='2026-11-15',monday='2026-11-16';
+  const prior={rate:5.6518,quote_date:friday,previous_day:true,source:'BCB/PTAX venda (informada manualmente)'};
+  store.saveMissingRate(sunday,prior);
+  store.saveSource('ads',account,monday,monday,[{...cost(),date:monday}]);
+  store.saveSource('gam',network,monday,monday,[{...revenue(2),date:monday,currency:'USD'}]);
+  const range={...scope,start:monday,end:monday},provisional=store.read(range);
+  assert.deepEqual(provisional.rates[monday],{...prior,cached:true});
+  assert.deepEqual(provisional.cached_fx_days,[monday]);
+  assert.deepEqual(provisional.missing_fx_days,[]);
+  assert.equal(provisional.totals.revenue,2*prior.rate);
+  assert.ok(provisional.warnings.some(warning=>warning.includes('Conversão provisória')));
+  assert.equal(store.readRates(friday,friday)[friday],undefined);
+  assert.equal(store.readRates('2026-11-21','2026-11-21')['2026-11-21'],undefined);
+
+  const published={rate:5.7,quote_date:monday,previous_day:false};
+  store.saveRates({[monday]:published});
+  store.saveRates({[monday]:prior});
+  const updated=store.read(range);
+  assert.deepEqual(updated.rates[monday],published);
+  assert.deepEqual(updated.cached_fx_days,[]);
+  assert.equal(updated.totals.revenue,11.4);
+ }finally{db.close();}
+});
 test('automatic collection runs hourly, revisits seven days once daily, and prevents overlapping work',async()=>{
  let time=Date.parse('2026-10-26T12:00:00Z'),state={},count=0,release;
  const scheduler=createROIScheduler({enabled:true,clock:()=>time,day:()=>new Date(time).toISOString().slice(0,10),read:()=>state,write:s=>state=s,isBusy:()=>false,run:async range=>{count++;assert.deepEqual(range,count===1?{start:'2026-10-20',end:'2026-10-26',deep:true}:{start:'2026-10-26',end:'2026-10-26',deep:false});if(count===1)await new Promise(r=>release=r);return {complete:true};}});
