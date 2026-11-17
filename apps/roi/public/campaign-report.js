@@ -4,10 +4,15 @@ import {gamMetrics} from './gam-metrics.js';
 export function campaignRows(result,{account,campaign,site=''}){
  return (result?.rows||[]).filter(r=>r.account===account&&r.campaign===campaign&&(!site||(site==='Sem site identificado'?!r.site||r.site===site:r.site===site)));
 }
+export function siteDailyReport(result,site,start,end){
+ if(!site)return [];
+ const rows=(result?.rows||[]).filter(row=>row.comparable&&(row.site||'Sem site identificado')===site);
+ return dailyReport(rows,result?.rates,start,end);
+}
 export function dailyReport(rows,rates={},start,end){
  if(!rows.length)return [];
  const days=new Map(),get=date=>{if(!days.has(date))days.set(date,{date,cost:0,revenue:0,comparable:rows.every(r=>r.comparable),missingCost:false,missingRevenue:false});return days.get(date);};
- // Only fill dates of an existing campaign in this saved report, never invent a campaign.
+ // Only fill dates when the report has campaign data.
  if(/^\d{4}-\d{2}-\d{2}$/.test(start||'')&&/^\d{4}-\d{2}-\d{2}$/.test(end||'')){
   const date=new Date(start+'T00:00:00Z');for(let n=0;n<93&&date.toISOString().slice(0,10)<=end;n++,date.setUTCDate(date.getUTCDate()+1))get(date.toISOString().slice(0,10));
  }

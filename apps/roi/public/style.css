@@ -112,6 +112,8 @@ body.sidebar-hidden{grid-template-columns:minmax(0,1fr)}.sidebar-toggle{display:
 #report-panel table.report-columns-compact { min-width: var(--report-table-min); table-layout: auto; }
 #report-panel table.report-columns-compact :is(th, td) { width: auto; }
 #report-panel :is(th, td)[hidden], .report-sticky-header th[hidden] { display: none !important; }
+.site-row-actions { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+.site-row-actions .text-link { color:#4b7198; }
 
 .report-notices {
  margin-top: 18px;

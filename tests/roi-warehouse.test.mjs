@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {createROIWarehouse} from '../apps/roi/warehouse.mjs';
 import {createROIScheduler} from '../apps/roi/scheduler.mjs';
-import {dailyReport} from '../apps/roi/public/campaign-report.js';
+import {dailyReport,siteDailyReport} from '../apps/roi/public/campaign-report.js';
 const day='2026-10-24',account='1234567890',network='1234',scope={start:day,end:day,accounts:[account],networks:[network]};
 const cost=(value=10)=>({date:day,account,campaign:'1',name:'Campaign',site:'exemplo.com.br',utm:'u',currency:'BRL',timezone:'America/Sao_Paulo',cost:value});
 const revenue=(value=15)=>({date:day,network,site:'exemplo.com.br',utm:'u',currency:'BRL',timezone:'America/Sao_Paulo',revenue:value,impressions:100});
@@ -26,6 +26,27 @@ test('failed source refresh preserves last valid facts and marks freshness witho
 test('local queries isolate source and period and join multiple networks without duplicating ad cost',()=>{
  const db=new DatabaseSync(':memory:');try{const store=createROIWarehouse(db);store.saveSource('ads',account,day,day,[cost()]);store.saveSource('gam',network,day,day,[revenue()]);store.saveSource('gam','5678',day,day,[{...revenue(2),network:'5678',currency:'USD'}]);store.saveRates({[day]:{rate:5,quote_date:day}});
  assert.equal(store.read(scope).totals.revenue,15);const both=store.read({...scope,networks:[network,'5678']});assert.equal(both.totals.cost,10);assert.equal(both.totals.revenue,25);assert.equal(both.totals.profit,15);
+ }finally{db.close();}
+});
+test('daily site performance combines confirmed campaigns and keeps the site totals',()=>{
+ const db=new DatabaseSync(':memory:');
+ try{
+  const store=createROIWarehouse(db),next='2026-10-25',range={...scope,end:next};
+  store.saveSource('ads',account,day,next,[
+   cost(10),{...cost(30),campaign:'2',utm:'v'},{...cost(20),date:next},
+   {...cost(90),campaign:'3',utm:'pending'},{...cost(80),campaign:'4',site:'outro.com.br'}
+  ]);
+  store.saveSource('gam',network,day,next,[
+   revenue(25),{...revenue(20),utm:'v'},{...revenue(35),date:next},{...revenue(100),site:'outro.com.br'}
+  ]);
+  const result=store.read(range),site=result.sites.find(row=>row.site==='exemplo.com.br');
+  const days=siteDailyReport(result,site.site,day,next);
+  assert.deepEqual(days.map(({date,cost,revenue,profit,roi})=>({date,cost,revenue,profit,roi})),[
+   {date:day,cost:40,revenue:45,profit:5,roi:0.125},
+   {date:next,cost:20,revenue:35,profit:15,roi:0.75}
+  ]);
+  for(const metric of ['cost','revenue','profit'])assert.equal(days.reduce((total,row)=>total+row[metric],0),site[metric]);
+  assert.deepEqual(siteDailyReport(result,'ausente.com.br',day,next),[]);
  }finally{db.close();}
 });
 test('ROI uses the last stored PTAX provisionally until the daily quote arrives',()=>{
