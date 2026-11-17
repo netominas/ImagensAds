@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Push Notifications · ROI</title>
+ <link rel="stylesheet" href="/apps/roi/style.css">
+</head>
+<body class="sidebar-hidden">
+ <main>
+  <header class="topbar"><a href="/apps/roi/">← Voltar ao dashboard de ROI</a></header>
+  <div class="page push-page">
+   <h1>Push Notifications</h1>
+   <form id="push-period" class="payments-filters" aria-label="Período do relatório">
+    <label>Data inicial<input name="start" type="date" required></label>
+    <label>Data final<input name="end" type="date" required></label>
+    <div class="push-actions">
+     <button class="button primary" type="submit">Consultar período</button>
+     <button class="button secondary" id="push-refresh" type="button">Atualizar UTMs no GAM</button>
+    </div>
+   </form>
+   <div class="payments-filters" aria-label="Filtros de Push">
+    <label>Site<select id="push-site"></select></label>
+    <label>Fornecedor<select id="push-provider"></select></label>
+    <label>Tipo de envio<select id="push-type"><option value="">Todos os tipos</option><option value="welcome">Welcome</option><option value="broadcast">Broadcast</option><option value="other">Outros</option></select></label>
+    <label>Campanha<input id="push-search" type="search" placeholder="Buscar UTM da campanha"></label>
+   </div>
+   <section class="metrics" aria-label="Resumo de receita Push">
+    <article class="metric"><span>Receita atribuída</span><strong id="push-total">—</strong><small>Ad Exchange</small></article>
+    <article class="metric"><span>Receita de Welcome</span><strong id="push-welcome">—</strong><small>Envios após o cadastro</small></article>
+    <article class="metric"><span>Receita de Broadcast</span><strong id="push-broadcast">—</strong><small>Envios recorrentes</small></article>
+    <article class="metric"><span>Impressões</span><strong id="push-impressions">—</strong><small>Anúncios do Ad Exchange</small></article>
+   </section>
+   <p id="push-status" role="status" aria-live="polite"></p>
+   <div class="table-scroll">
+    <table class="push-table" aria-label="Receita de Push por data e campanha">
+     <thead><tr><th scope="col">Data</th><th scope="col">Site</th><th scope="col">Fornecedor</th><th scope="col">Tipo</th><th scope="col">Campanha</th><th scope="col">UTM medium</th><th scope="col">Impressões</th><th scope="col">Receita bruta</th><th scope="col">Receita atribuída</th></tr></thead>
+     <tbody id="push-rows"></tbody>
+    </table>
+   </div>
+   <details class="methodology">
+    <summary>Cobertura das redes e atribuição</summary>
+    <p>O relatório agrupa a receita do Ad Exchange por data, site e campanha. O prefixo <code>welc_</code> identifica Welcome e <code>broad_</code> identifica Broadcast. Quando disponível, <code>utm_medium=ps_…</code> identifica o fornecedor. No histórico sem <code>utm_medium</code>, o fornecedor é inferido pelo nome da campanha.</p>
+    <p id="push-deductions"></p>
+    <ul id="push-coverage"></ul>
+   </details>
+  </div>
+ </main>
+ <script type="module" src="/apps/roi/push.js"></script>
+</body>
+</html>

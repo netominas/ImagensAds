@@ -17,14 +17,14 @@ export function attribution(url,campaign,customer={},group={},ad={}){
  const utm=query.get('utm_campaign')||'';return {site:domain,utm:/[{}]/.test(utm)?'':utm,reason:/[{}]/.test(utm)?'UTM contém parâmetros dinâmicos não resolvidos':''};
 }
 const optionalMetric=(r,key,micros=false)=>{const raw=r['Column.'+key];if(raw==null||raw==='')return null;const n=Number(raw);return Number.isFinite(n)&&n>=0?n/(micros?1e6:1):null;};
-export function revenueFacts(report,network,keyName='utm_campaign'){
+export function revenueFacts(report,network,keyName='utm_campaign',mediumKey){
  const output=[];const column=report.mode==='CUSTOM_DIMENSION'?`Dimension.TOP_LEVEL_DIMENSION_KEY[${report.key}]_VALUE`:'Dimension.CUSTOM_CRITERIA';
  for(const r of report.rows){
   let utm=String(r[column]||'');if(report.mode!=='CUSTOM_DIMENSION'){if(!utm.startsWith(keyName+'='))continue;utm=utm.slice(keyName.length+1);}
   if(!utm||['(not set)','(Not applicable)','/empty/'].includes(utm))continue;
   const revenue=Number(r['Column.AD_EXCHANGE_LINE_ITEM_LEVEL_REVENUE']),impressions=Number(r['Column.AD_EXCHANGE_LINE_ITEM_LEVEL_IMPRESSIONS']);
   if(!Number.isFinite(revenue)||!Number.isFinite(impressions))throw Error('Métricas de receita inválidas.');
-  output.push({date:r['Dimension.DATE'],site:site(String(r['Dimension.DOMAIN']||'')),utm,network:network.id,network_name:network.name,currency:network.currency,timezone:network.timezone,revenue:revenue/1e6,impressions,clicks:optionalMetric(r,'AD_EXCHANGE_LINE_ITEM_LEVEL_CLICKS'),ecpm:optionalMetric(r,'AD_EXCHANGE_LINE_ITEM_LEVEL_AVERAGE_ECPM',true),cpc:optionalMetric(r,'AD_EXCHANGE_COST_PER_CLICK',true),programmatic_responses:optionalMetric(r,'PROGRAMMATIC_RESPONSES_SERVED'),eligible_requests:optionalMetric(r,'TOTAL_PROGRAMMATIC_ELIGIBLE_AD_REQUESTS')});
+  output.push({date:r['Dimension.DATE'],site:site(String(r['Dimension.DOMAIN']||'')),utm,...(mediumKey?{medium:String(r[`Dimension.TOP_LEVEL_DIMENSION_KEY[${mediumKey}]_VALUE`]||'')}:{}),network:network.id,network_name:network.name,currency:network.currency,timezone:network.timezone,revenue:revenue/1e6,impressions,clicks:optionalMetric(r,'AD_EXCHANGE_LINE_ITEM_LEVEL_CLICKS'),ecpm:optionalMetric(r,'AD_EXCHANGE_LINE_ITEM_LEVEL_AVERAGE_ECPM',true),cpc:optionalMetric(r,'AD_EXCHANGE_COST_PER_CLICK',true),programmatic_responses:optionalMetric(r,'PROGRAMMATIC_RESPONSES_SERVED'),eligible_requests:optionalMetric(r,'TOTAL_PROGRAMMATIC_ELIGIBLE_AD_REQUESTS')});
  }return output;
 }
 export function reconcile(costs,revenues,rates,rules=[],{partial=false}={}){

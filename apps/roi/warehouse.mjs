@@ -14,8 +14,9 @@ export function createROIWarehouse(db,{now=()=>new Date().toISOString()}={}){
  const revision=()=>Number(meta('revision')||0),bump=()=>putMeta('revision',revision()+1);
  function saveSource(kind,source,start,end,facts,{collectedAt=now()}={}){
   const days=daysBetween(start,end),counts=new Map(days.map(d=>[d,0])),stamp=new Date(collectedAt).toISOString();
-  if(!['ads','ads-script','gam'].includes(kind)||!Array.isArray(facts))throw Error('Invalid source batch');
-  for(const f of facts){if(!counts.has(f.date)||String(kind==='gam'?f.network:f.account)!==source||!Number.isFinite(kind==='gam'?f.revenue:f.cost))throw Error('Invalid daily fact');}
+  if(!['ads','ads-script','gam','gam-push'].includes(kind)||!Array.isArray(facts))throw Error('Invalid source batch');
+  const isRevenue=kind==='gam'||kind==='gam-push';
+  for(const f of facts){if(!counts.has(f.date)||String(isRevenue?f.network:f.account)!==source||!Number.isFinite(isRevenue?f.revenue:f.cost))throw Error('Invalid daily fact');}
   db.exec('BEGIN IMMEDIATE');try{
    if(kind==='ads-script'&&sourceDays(kind,source,start,end).some(row=>row.collected_at>stamp)){
     throw new AdsError('Já existe uma importação mais recente nesse intervalo.',{status:409});
