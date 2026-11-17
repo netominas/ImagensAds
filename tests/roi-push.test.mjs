@@ -11,6 +11,8 @@ test('Push uses the observed medium before the campaign name and normalizes prov
  assert.deepEqual(classifyPush('broad_alert_cidadeinternet_3','ps_aiweb'),{provider:'aiweb',type:'broadcast',medium:'ps_aiweb'});
  assert.equal(classifyPush('welc_alert_cidadeinternet_2','email'),null);
  assert.equal(classifyPush('organic_campaign'),null);
+ assert.equal(classifyPush('broad_motorpress_73'),null);
+ assert.equal(classifyPush('broad_motorpress_73','ps_aiweb').type,'broadcast');
  assert.equal(classifyPush('announcement','ps_another').type,'other');
 });
 

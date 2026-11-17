@@ -7,12 +7,12 @@ import {revenueFacts} from './model.mjs';
 const aliases={aiweb:'aiweb',alert:'pushalert',pushalert:'pushalert',news:'pushnews',newst:'pushnews',pushnews:'pushnews'};
 const emptyMedium=new Set(['','(not set)','(not applicable)','/empty/']);
 export function classifyPush(utm,medium=''){
- const campaign=/^(welc|broad)_([a-z0-9-]+)_.+$/i.exec(utm);
+ const type=/^(welc|broad)_/i.exec(utm)?.[1].toLowerCase();
+ const campaign=/^(?:welc|broad)_([a-z0-9-]+)_[a-z0-9._-]+_\d+$/i.exec(utm);
  const mediumValue=medium.trim().toLowerCase();
  const source=/^ps_([a-z0-9_-]+)$/.exec(mediumValue)?.[1];
  if(!source&&(!campaign||!emptyMedium.has(mediumValue)))return null;
- const provider=source||campaign[2].toLowerCase();
- const type=campaign?.[1].toLowerCase();
+ const provider=source||campaign[1].toLowerCase();
  return {provider:Object.hasOwn(aliases,provider)?aliases[provider]:provider,type:type==='welc'?'welcome':type==='broad'?'broadcast':'other',medium:source?mediumValue:null};
 }
 
