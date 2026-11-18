@@ -53,6 +53,13 @@ test('WhatsApp imports replace daily batches, retain successful data on failure,
   assert.equal(result.rows.find(row=>row.site==='sitea.com.br').gross,12);
   assert.equal(result.rows.find(row=>row.site==='sitea.com.br').revenue,8.82);
   assert.ok(result.coverage.every(source=>source.days===1));
+  const restricted=service.report(range,{sites:['sitea.com.br'],readonly:true});
+  assert.equal(restricted.rows.length,1);
+  assert.equal(restricted.rows[0].site,'sitea.com.br');
+  assert.equal(restricted.job,null);
+  assert.equal(restricted.coverage[0].name,'Ad Manager');
+  assert.ok(!JSON.stringify(restricted).includes('Rede de teste'));
+  assert.equal(service.report(range,{sites:[],readonly:true}).rows.length,0);
   service.refresh(range);await new Promise(resolve=>setImmediate(resolve));
   assert.deepEqual(service.report(range).rows,result.rows);
   fail=true;service.refresh(range);await new Promise(resolve=>setImmediate(resolve));

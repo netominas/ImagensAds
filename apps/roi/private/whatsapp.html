@@ -8,14 +8,14 @@
 </head>
 <body class="sidebar-hidden">
  <main>
-  <header class="topbar"><a href="/apps/roi/">← Voltar ao dashboard de ROI</a><a href="/apps/roi/push">Push Notifications</a></header>
+  <header class="topbar"><a id="whatsapp-back" href="/apps/roi/">← Voltar ao dashboard de ROI</a><a id="whatsapp-push" href="/apps/roi/push" hidden>Push Notifications</a></header>
   <div class="page">
    <h1>Grupos de WhatsApp</h1>
    <form id="whatsapp-period" class="payments-filters" aria-label="Período do relatório">
     <label>Período<select id="whatsapp-preset"><option value="7">Últimos 7 dias</option><option value="today">Hoje</option><option value="yesterday">Ontem</option><option value="custom">Personalizado</option></select></label>
     <label>Data inicial<input name="start" type="date" required></label>
     <label>Data final<input name="end" type="date" required></label>
-    <div class="push-actions"><button class="button primary" type="submit">Consultar período</button><button class="button secondary" id="whatsapp-refresh" type="button">Atualizar no GAM</button></div>
+    <div class="push-actions"><button class="button primary" type="submit">Consultar período</button><button class="button secondary" id="whatsapp-refresh" type="button" hidden>Atualizar no GAM</button></div>
    </form>
    <div class="payments-filters" aria-label="Filtros de WhatsApp">
     <label>Site<select id="whatsapp-site"><option value="">Todos os sites</option></select></label>

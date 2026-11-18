@@ -31,7 +31,7 @@ export function createWhatsAppReport(db,{warehouse,admanager,networks,deductions
   return {start,end};
  };
  const facts=db.prepare('SELECT data FROM roi_daily_facts WHERE kind=? AND source=? AND day BETWEEN ? AND ? ORDER BY day,ordinal');
- function report(input){
+ function report(input,{sites=null,readonly=false}={}){
   const {start,end}=range(input),rates=warehouse.readRates(start,end),config=deductions.read(),rows=new Map(),coverage=[];
   const taxable=config.enabled&&config.tax_enabled&&config.tax_percent>0;
   const taxPending=taxable&&config.tax_base==='profit';
@@ -41,7 +41,7 @@ export function createWhatsAppReport(db,{warehouse,admanager,networks,deductions
     collectedAt:days.map(day=>day.collected_at).filter(Boolean).sort().at(-1)||null});
    for(const record of facts.all(kind,network.id,start,end)){
     const fact=JSON.parse(record.data);
-    if(fact.traffic_source!=='whats')continue;
+    if(fact.traffic_source!=='whats'||sites&&!sites.includes(fact.site))continue;
     const key=JSON.stringify([fact.date,fact.site,fact.utm,fact.campaign_detailed]);
     if(!rows.has(key))rows.set(key,{date:fact.date,site:fact.site,campaign:fact.utm,detailed:fact.campaign_detailed,
      impressions:0,gross:0,revenue:0,provisional:false});
@@ -54,7 +54,9 @@ export function createWhatsAppReport(db,{warehouse,admanager,networks,deductions
     row.provisional||=fact.currency==='USD'&&Boolean(rates[fact.date]?.cached);
    }
   }
-  return {start,end,rows:[...rows.values()],coverage,job,taxPending,deductions:config.enabled};
+  const publicCoverage=readonly?[{name:'Ad Manager',days:coverage.length?Math.min(...coverage.map(network=>network.days)):0,
+   error:coverage.some(network=>network.error)?'Uma fonte está pendente de atualização.':null,collectedAt:null}]:coverage;
+  return {start,end,rows:[...rows.values()],coverage:publicCoverage,job:readonly?null:job,readonly,taxPending,deductions:config.enabled};
  }
  async function collect(selection,start,end){
   let successful=0;

@@ -1,4 +1,4 @@
-import {createUsers,canCampaign} from './lib/users.mjs';
+import {createUsers,canCampaign,canWhatsApp} from './lib/users.mjs';
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {Readable} from 'node:stream';
@@ -40,16 +40,19 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       const originalPath=url.pathname;
       const redirect=location=>new Response(null,{status:303,headers:{Location:location,'Cache-Control':'no-store'}});
       const session=await getSession(new Request(url,{headers:req.headers}),authStore,env);
+      const whatsappRead=['GET','HEAD'].includes(req.method)&&canWhatsApp(session)&&(
+        ['/apps/roi/whatsapp','/apps/roi/whatsapp.js','/apps/roi/style.css'].includes(originalPath)||
+        req.method==='GET'&&originalPath==='/apps/roi/api/whatsapp');
       const financeReader=session?.role==='finance-reader';
       if(financeReader){
         if(['/','/dashboard'].includes(originalPath))return send(redirect('/apps/financas/'));
         const financePage=['/apps/financas','/apps/financas/'].includes(originalPath);
         const financeAsset=originalPath.startsWith('/apps/financas/')&&financeAssets.has(originalPath.slice('/apps/financas/'.length));
         const canRead=['GET','HEAD'].includes(req.method)&&(financePage||financeAsset||originalPath==='/dashboard.css');
-        if(!publicReader.has(originalPath)&&!canRead&&!(req.method==='GET'&&financeReadPaths.has(originalPath)))return send(authJSON({error:'Acesso somente para visualização do Finanças.'},403));
+        if(!publicReader.has(originalPath)&&!canRead&&!whatsappRead&&!(req.method==='GET'&&financeReadPaths.has(originalPath)))return send(authJSON({error:'Acesso somente para visualização do Finanças.'},403));
       }
       if(session?.role==='reader'){
-        if(['/', '/dashboard'].includes(originalPath))return send(redirect('/apps/roi/'));
+        if(['/', '/dashboard'].includes(originalPath))return send(redirect(session.home));
         const roiPage=['/apps/roi','/apps/roi/','/apps/roi/sites'].includes(originalPath);
         const roiFile=originalPath.startsWith('/apps/roi/')&&!originalPath.startsWith('/apps/roi/private/')&&!originalPath.startsWith('/apps/roi/api/');
         if(!publicReader.has(originalPath)&&!roiPage&&!roiFile&&!originalPath.startsWith('/apps/roi/api/'))return send(authJSON({error:'Acesso não permitido.'},403));
@@ -79,7 +82,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
       if(isUsers){if(!session)return send(authJSON({error:'Entre novamente.'},401));if(session.role!=='admin')return send(authJSON({error:'Acesso exclusivo do administrador.'},403));}
       if(['/apps/roi/script','/apps/roi/automacoes','/apps/roi/push','/apps/roi/whatsapp'].includes(originalPath)){
         const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);if(denied)return send(redirect('/login'));
-        if(session?.role!=='admin')return send(authJSON({error:'Acesso exclusivo do administrador.'},403));
+        if(session?.role!=='admin'&&!whatsappRead)return send(authJSON({error:'Acesso não permitido.'},403));
         if(!['GET','HEAD'].includes(req.method))return send(authJSON({error:'Método não permitido.'},405));
         return send(new Response(await readFile(new URL({ '/apps/roi/automacoes':'./apps/roi/private/automations.html', '/apps/roi/push':'./apps/roi/private/push.html', '/apps/roi/whatsapp':'./apps/roi/private/whatsapp.html', '/apps/roi/script':'./apps/roi/private/script-report.html' }[originalPath],import.meta.url)),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store','Vary':'Cookie'}}));
       }

@@ -71,6 +71,11 @@ window.addEventListener('finance-catalog-changed',()=>{void load();});
 window.addEventListener('finance-new-expense',reset);
 const session=await requireAccess();
 if(session){
+ if(session.whatsapp_sites?.length){
+  const link=document.createElement('a');
+  link.href='/apps/roi/whatsapp';link.textContent='Grupos de WhatsApp';
+  document.querySelector('#finance-sidebar nav').append(link);
+ }
  readOnly=session.role==='finance-reader';
  initNavigation(readOnly);
  if(!readOnly)await initCatalog();

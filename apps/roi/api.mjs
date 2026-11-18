@@ -5,7 +5,7 @@ import {gridPeriod,roiGrid} from './roi-grid.mjs';
 import {campaignRows,dailyReport} from './public/campaign-report.js';
 import {createPlacements} from './placements.mjs';
 import {createCampaignAnalysis} from './campaign-analysis.mjs';
-import {canCampaign,canAccount} from '../../lib/users.mjs';
+import {canCampaign,canAccount,canWhatsApp} from '../../lib/users.mjs';
 import {readerReport} from './reader.mjs';
 import {createPayments} from './payments.mjs';
 import {createBudgets} from './budgets.mjs';
@@ -182,12 +182,12 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   const url=new URL(request.url),path=url.pathname.slice('/apps/roi/api'.length),method=request.method;
   if(!['GET','HEAD'].includes(method)&&!sameOrigin(request))return authJSON({error:'Origem não permitida.'},403);
   try{
+   if(path==='/whatsapp'&&method==='GET'){
+    if(!canWhatsApp(user))return authJSON({error:'Acesso ao relatório de WhatsApp não autorizado.'},403);
+    return authJSON(whatsapp.report(Object.fromEntries(url.searchParams),user.role==='admin'?{}:{sites:user.whatsapp_sites,readonly:true}));
+   }
    if(user?.role==='reader')return await readOnly(request,user);
    if(method==='GET'){
-    if(path==='/whatsapp'){
-     if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);
-     return authJSON(whatsapp.report(Object.fromEntries(url.searchParams)));
-    }
     if(path==='/push'){
      if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);
      return authJSON(push.report(Object.fromEntries(url.searchParams)));

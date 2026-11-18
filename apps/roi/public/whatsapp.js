@@ -1,3 +1,8 @@
+import {requireAccess} from '/access.js';
+const viewer=await requireAccess();
+if(!viewer)throw Error('Sessão necessária.');
+const administrator=viewer.role==='admin';
+if(!administrator&&!viewer.whatsapp_sites?.length){location.replace(viewer.home);throw Error('Relatório não autorizado.');}
 const byId=id=>document.getElementById(id),form=byId('whatsapp-period'),status=byId('whatsapp-status');
 const refresh=byId('whatsapp-refresh'),siteFilter=byId('whatsapp-site'),campaignFilter=byId('whatsapp-campaign'),group=byId('whatsapp-group');
 const money=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}),number=new Intl.NumberFormat('pt-BR');
@@ -7,6 +12,9 @@ const shift=offset=>{const day=new Date(today+'T12:00:00Z');day.setUTCDate(day.g
 const showMoney=value=>value==null?'—':money.format(value);
 const campaignName=value=>value||'Sem detalhamento de campanha';
 let data=null,timer=null,request=0;
+refresh.hidden=!administrator;
+byId('whatsapp-push').hidden=!administrator;
+if(viewer.role==='finance-reader'){byId('whatsapp-back').href='/apps/financas/';byId('whatsapp-back').textContent='← Voltar ao Finanças';}
 form.elements.start.value=shift(-6);form.elements.end.value=today;
 form.elements.start.max=form.elements.end.max=today;
 
@@ -58,7 +66,7 @@ function render(){
  const days=(Date.parse(data.end)-Date.parse(data.start))/86400000+1;
  const messages=[date(data.start)+' a '+date(data.end)+' · '+display.length+' resultado(s).'];
  if(!data.coverage.length)messages.push('Selecione as redes GAM nas fontes do ROI.');
- if(data.coverage.some(network=>network.days<days))messages.push('Há dias sem coleta. Use Atualizar no GAM e confira a cobertura.');
+ if(data.coverage.some(network=>network.days<days))messages.push(administrator?'Há dias sem coleta. Use Atualizar no GAM e confira a cobertura.':'Há dias com dados pendentes de atualização.');
  if(rows.some(row=>!row.detailed))messages.push('Parte da receita aguarda o detalhamento por campanha no GAM.');
  if(rows.some(row=>row.provisional))messages.push('Conversão com PTAX provisória em parte dos valores.');
  if(rows.some(row=>row.revenue==null))messages.push('Há valores em dólar aguardando cotação.');
