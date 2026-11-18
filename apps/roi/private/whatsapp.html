@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Grupos de WhatsApp · ROI</title>
+ <link rel="stylesheet" href="/apps/roi/style.css">
+</head>
+<body class="sidebar-hidden">
+ <main>
+  <header class="topbar"><a href="/apps/roi/">← Voltar ao dashboard de ROI</a><a href="/apps/roi/push">Push Notifications</a></header>
+  <div class="page">
+   <h1>Grupos de WhatsApp</h1>
+   <form id="whatsapp-period" class="payments-filters" aria-label="Período do relatório">
+    <label>Período<select id="whatsapp-preset"><option value="7">Últimos 7 dias</option><option value="today">Hoje</option><option value="yesterday">Ontem</option><option value="custom">Personalizado</option></select></label>
+    <label>Data inicial<input name="start" type="date" required></label>
+    <label>Data final<input name="end" type="date" required></label>
+    <div class="push-actions"><button class="button primary" type="submit">Consultar período</button><button class="button secondary" id="whatsapp-refresh" type="button">Atualizar no GAM</button></div>
+   </form>
+   <div class="payments-filters" aria-label="Filtros de WhatsApp">
+    <label>Site<select id="whatsapp-site"><option value="">Todos os sites</option></select></label>
+    <label>Campanha<select id="whatsapp-campaign"><option value="">Todas as campanhas</option></select></label>
+    <label>Agrupar por<select id="whatsapp-group"><option value="site-campaign">Site e campanha</option><option value="site">Site</option><option value="campaign">Campanha</option><option value="daily">Data, site e campanha</option></select></label>
+   </div>
+   <section class="metrics" aria-label="Resumo de receita WhatsApp">
+    <article class="metric"><span>Receita atribuída</span><strong id="whatsapp-total">—</strong><small>Após descontos ativos</small></article>
+    <article class="metric"><span>Receita bruta</span><strong id="whatsapp-gross">—</strong><small>Ad Exchange</small></article>
+    <article class="metric"><span>Impressões</span><strong id="whatsapp-impressions">—</strong><small>Anúncios do Ad Exchange</small></article>
+    <article class="metric"><span>Campanhas identificadas</span><strong id="whatsapp-count">—</strong><small>Valores de utm_campaign</small></article>
+   </section>
+   <p id="whatsapp-status" role="status" aria-live="polite"></p>
+   <div class="table-scroll">
+    <table class="whatsapp-table" aria-label="Receita dos grupos de WhatsApp">
+     <thead><tr><th scope="col" id="whatsapp-date-header" hidden>Data</th><th scope="col">Site</th><th scope="col">Campanha</th><th scope="col">Impressões</th><th scope="col">Receita bruta</th><th scope="col">Receita atribuída</th></tr></thead>
+     <tbody id="whatsapp-rows"></tbody><tfoot id="whatsapp-footer" hidden></tfoot>
+    </table>
+   </div>
+   <details class="methodology">
+    <summary>Cobertura das redes e atribuição</summary>
+    <p>Receita estimada do Ad Exchange identificada por utm_source=whats. O site é o domínio onde os anúncios foram exibidos. Os nomes das campanhas são preservados, incluindo grupoviagens, grupocarros e outros valores de utm_campaign.</p>
+    <p>O detalhamento por campanha exige utm_source e utm_campaign habilitadas como dimensões personalizadas no GAM. Quando a rede permite consultar apenas a origem, sua receita aparece por site como “Sem detalhamento de campanha”.</p>
+    <p id="whatsapp-deductions"></p><ul id="whatsapp-coverage"></ul>
+   </details>
+  </div>
+ </main>
+ <script type="module" src="/apps/roi/whatsapp.js"></script>
+</body>
+</html>

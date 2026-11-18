@@ -1,4 +1,5 @@
 import {createPushReport} from './push.mjs';
+import {createWhatsAppReport} from './whatsapp.mjs';
 import {applyDeductions,createDeductionSettings} from './deductions.mjs';
 import {gridPeriod,roiGrid} from './roi-grid.mjs';
 import {campaignRows,dailyReport} from './public/campaign-report.js';
@@ -66,11 +67,13 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   networksPending=(async()=>{const prior=await catalog(),found=await admanager.networks(),networks=found.map(n=>({...n,available:true}));for(const n of prior.networks)if(config()?.networks.includes(n.id)&&!networks.some(item=>item.id===n.id))networks.push({...n,available:false});const data={...prior,networks,networks_updated_at:new Date().toISOString()};warehouse.putMeta('catalog',data);return {...data,settings:config(),links:links()};})();try{return await networksPending;}finally{networksPending=null;}
  }
  function defaults(data){return config()||{accounts:data.accounts.filter(a=>a.status==='ENABLED').map(a=>a.id),networks:data.networks.map(n=>n.id)};}
- const push=createPushReport(db,{warehouse,admanager,deductions,networks:()=>{
+ const selectedNetworks=()=>{
   const data=warehouse.meta('catalog')||{accounts:[],networks:[]};
   const selected=new Set(defaults(data).networks);
   return data.networks.filter(network=>selected.has(network.id));
- }});
+ };
+ const push=createPushReport(db,{warehouse,admanager,deductions,networks:selectedNetworks});
+ const whatsapp=createWhatsAppReport(db,{warehouse,admanager,deductions,networks:selectedNetworks});
  function scopeFrom(body,data,{dates=true}={}){
   if(dates){dateRange(body.start,body.end);if(body.end>today())throw new AdsError('A data final não pode estar no futuro.',{status:400});}
   for(const [field,available]of [['accounts',data.accounts],['networks',data.networks]])if(!Array.isArray(body[field])||!body[field].length||body[field].length>120||new Set(body[field]).size!==body[field].length||body[field].some(v=>!available.some(a=>a.id===v)))throw new AdsError('Selecione contas e redes disponíveis.',{status:400});
@@ -181,6 +184,10 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   try{
    if(user?.role==='reader')return await readOnly(request,user);
    if(method==='GET'){
+    if(path==='/whatsapp'){
+     if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);
+     return authJSON(whatsapp.report(Object.fromEntries(url.searchParams)));
+    }
     if(path==='/push'){
      if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);
      return authJSON(push.report(Object.fromEntries(url.searchParams)));
@@ -213,7 +220,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
     if(path==='/budget')return authJSON(await budgets.read(url.searchParams.get('account'),url.searchParams.get('campaign')));
     if(path==='/budget-operation')return authJSON(await budgets.status(url.searchParams.get('id')));
     if(path==='/catalog')return authJSON({...await catalog(),settings:config(),links:links(),database:true});
-    if(path==='/status'){const latest=db.prepare("SELECT id FROM roi_runs WHERE status='done' ORDER BY created DESC LIMIT 1").get();return authJSON({running:runningJob(),latest:latest?.id||null,active_jobs:(active?1:0)+budgets.activeJobs()+analysis.activeJobs()+placements.activeJobs()+push.activeJobs(),automatic:scheduler.status(),revision:warehouse.revision(),last_collection:warehouse.meta('last_collection')});}
+    if(path==='/status'){const latest=db.prepare("SELECT id FROM roi_runs WHERE status='done' ORDER BY created DESC LIMIT 1").get();return authJSON({running:runningJob(),latest:latest?.id||null,active_jobs:(active?1:0)+budgets.activeJobs()+analysis.activeJobs()+placements.activeJobs()+push.activeJobs()+whatsapp.activeJobs(),automatic:scheduler.status(),revision:warehouse.revision(),last_collection:warehouse.meta('last_collection')});}
     if(path==='/report'){const data=await catalog(),selected=defaults(data),scope=scopeFrom({start:url.searchParams.get('start'),end:url.searchParams.get('end'),accounts:url.searchParams.has('accounts')?url.searchParams.get('accounts').split(','):selected.accounts,networks:url.searchParams.has('networks')?url.searchParams.get('networks').split(','):selected.networks},data);return authJSON(databaseReport(scope));}
     if(path==='/run')return authJSON(getRun(url.searchParams.get('id')));
     if(path==='/history')return authJSON({runs:db.prepare("SELECT id,status,start,end,progress,error,created FROM roi_runs WHERE json_extract(config,'$.mode') IS NULL OR json_extract(config,'$.mode')='manual' ORDER BY created DESC LIMIT 20").all()});
@@ -241,6 +248,10 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
     const quote={rate,quote_date,timestamp:quote_date,source:'BCB/PTAX venda (informada manualmente)',previous_day:quote_date!==day};
     if(!warehouse.saveMissingRate(day,quote))throw new AdsError('Já existe uma cotação para este dia. Recarregue o relatório.',{status:409});
     return authJSON({day});
+   }
+   if(path==='/whatsapp/refresh'&&method==='POST'){
+    if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);
+    return authJSON(whatsapp.refresh(body),202);
    }
    if(path==='/push/refresh'&&method==='POST'){
     if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);
@@ -306,5 +317,5 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
   const rows=await google.search(a.id,"SELECT campaign.id, campaign.name, campaign.advertising_channel_type, campaign.status FROM campaign WHERE campaign.status != 'REMOVED'",a.mcc);
   return rows.map(r=>({id:String(r.campaign.id),name:r.campaign.name,type:r.campaign.advertisingChannelType,status:r.campaign.status}));
  };
- api.activeJobs=()=>(active?1:0)+budgets.activeJobs()+analysis.activeJobs()+placements.activeJobs()+push.activeJobs();api.startAuto=()=>{scheduler.start();analysis.start();placements.start();};api.stopAuto=()=>{scheduler.stop();analysis.stop();placements.stop();};api.automaticTick=()=>scheduler.tick();return api;
+ api.activeJobs=()=>(active?1:0)+budgets.activeJobs()+analysis.activeJobs()+placements.activeJobs()+push.activeJobs()+whatsapp.activeJobs();api.startAuto=()=>{scheduler.start();analysis.start();placements.start();};api.stopAuto=()=>{scheduler.stop();analysis.stop();placements.stop();};api.automaticTick=()=>scheduler.tick();return api;
 }
