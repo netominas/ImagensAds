@@ -25,6 +25,9 @@ test('WhatsApp attribution checks the source and preserves arbitrary campaigns a
  const sourceOnly=whatsappFacts({mode:'CUSTOM_CRITERIA',key:'2',rows:[{...csv(),'Dimension.CUSTOM_CRITERIA':'utm_source=whats'}]},network,{sourceKey:'2'});
  assert.equal(sourceOnly[0].campaign_detailed,false);
  assert.equal(sourceOnly[0].utm,'');
+ const currentColumns=queryReport([Object.fromEntries(Object.entries(csv()).map(([key,value])=>[key.replace('TOP_LEVEL_DIMENSION_KEY','TOP_LEVEL_CUSTOM_TARGETING_KEY'),value]))]);
+ assert.equal(whatsappFacts(currentColumns,network,{sourceKey:'2',campaignKey:'1'})[0].utm,'grupoviagens');
+ assert.equal(whatsappFacts({...currentColumns,key:'2'},network,{sourceKey:'2'})[0].campaign_detailed,false);
 });
 
 test('WhatsApp imports replace daily batches, retain successful data on failure, and apply each network discount',async()=>{

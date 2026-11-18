@@ -2,7 +2,7 @@ import {AdsError} from '../google-ads/client.mjs';
 import {dateRange} from './admanager.mjs';
 import {shareRate} from './deductions.mjs';
 import {toBRL,today} from './fx.mjs';
-import {revenueFacts} from './model.mjs';
+import {customDimensionColumn,revenueFacts} from './model.mjs';
 
 const aliases={aiweb:'aiweb',alert:'pushalert',pushalert:'pushalert',news:'pushnews',newst:'pushnews',pushnews:'pushnews'};
 const emptyMedium=new Set(['','(not set)','(not applicable)','/empty/']);
@@ -65,7 +65,7 @@ export function createPushReport(db,{warehouse,admanager,networks,deductions}){
     const medium=keys.find(key=>key.name==='utm_medium'&&key.reportableType==='CUSTOM_DIMENSION');
     if(!campaign||!medium)throw new AdsError('Habilite utm_campaign e utm_medium como dimensões personalizadas no GAM.');
     const data=await admanager.report(network.id,{start,end,key:campaign.id,additionalKeys:[medium.id]});
-    const mediumColumn=`Dimension.TOP_LEVEL_DIMENSION_KEY[${medium.id}]_VALUE`;
+    const mediumColumn=customDimensionColumn(data,medium.id);
     if(data.rows.length&&!Object.hasOwn(data.rows[0],mediumColumn))throw new AdsError('O GAM não retornou a coluna utm_medium.');
     const rows=revenueFacts(data,network,'utm_campaign',medium.id).filter(row=>classifyPush(row.utm,row.medium));
     warehouse.saveSource('gam-push',network.id,start,end,rows);

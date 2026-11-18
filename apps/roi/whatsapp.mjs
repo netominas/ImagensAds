@@ -2,19 +2,19 @@ import {AdsError} from '../google-ads/client.mjs';
 import {dateRange} from './admanager.mjs';
 import {shareRate} from './deductions.mjs';
 import {toBRL,today} from './fx.mjs';
-import {revenueFacts} from './model.mjs';
+import {customDimensionColumn,revenueFacts} from './model.mjs';
 
 const kind='gam-whatsapp';
 export function whatsappFacts(report,network,{sourceKey,campaignKey=null}){
  if(!campaignKey){
-  const sourceColumn=report.mode==='CUSTOM_DIMENSION'?`Dimension.TOP_LEVEL_DIMENSION_KEY[${sourceKey}]_VALUE`:'Dimension.CUSTOM_CRITERIA';
-  if(report.rows.some(row=>!Object.hasOwn(row,sourceColumn)))throw new AdsError('O GAM não retornou a coluna utm_source. Esperada '+sourceColumn+'. Recebidas '+Object.keys(report.rows[0]||{}).filter(key=>key.startsWith('Dimension.')).join(', '));
+  const sourceColumn=report.mode==='CUSTOM_DIMENSION'?customDimensionColumn(report,sourceKey):'Dimension.CUSTOM_CRITERIA';
+  if(report.rows.some(row=>!Object.hasOwn(row,sourceColumn)))throw new AdsError('O GAM não retornou a coluna utm_source.');
   return revenueFacts(report,network,'utm_source')
    .filter(fact=>fact.utm==='whats')
    .map(fact=>({...fact,utm:'',traffic_source:'whats',campaign_detailed:false}));
  }
- const sourceColumn=`Dimension.TOP_LEVEL_DIMENSION_KEY[${sourceKey}]_VALUE`;
- const campaignColumn=`Dimension.TOP_LEVEL_DIMENSION_KEY[${campaignKey}]_VALUE`;
+ const sourceColumn=customDimensionColumn(report,sourceKey);
+ const campaignColumn=customDimensionColumn(report,campaignKey);
  if(report.rows.some(row=>!Object.hasOwn(row,sourceColumn)||!Object.hasOwn(row,campaignColumn)))
   throw new AdsError('O GAM não retornou as colunas de origem e campanha.');
  const rows=report.rows.filter(row=>row[sourceColumn]==='whats').map(row=>({
