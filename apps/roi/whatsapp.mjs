@@ -8,7 +8,7 @@ const kind='gam-whatsapp';
 export function whatsappFacts(report,network,{sourceKey,campaignKey=null}){
  if(!campaignKey){
   const sourceColumn=report.mode==='CUSTOM_DIMENSION'?`Dimension.TOP_LEVEL_DIMENSION_KEY[${sourceKey}]_VALUE`:'Dimension.CUSTOM_CRITERIA';
-  if(report.rows.some(row=>!Object.hasOwn(row,sourceColumn)))throw new AdsError('O GAM não retornou a coluna utm_source.');
+  if(report.rows.some(row=>!Object.hasOwn(row,sourceColumn)))throw new AdsError('O GAM não retornou a coluna utm_source. Esperada '+sourceColumn+'. Recebidas '+Object.keys(report.rows[0]||{}).filter(key=>key.startsWith('Dimension.')).join(', '));
   return revenueFacts(report,network,'utm_source')
    .filter(fact=>fact.utm==='whats')
    .map(fact=>({...fact,utm:'',traffic_source:'whats',campaign_detailed:false}));
