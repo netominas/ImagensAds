@@ -231,14 +231,14 @@ POST `/apps/roi/api/placement-grid/ensure` valida o escopo de dez dias e usa a f
 
 ## Grupos de WhatsApp (monitor de crescimento)
 
-Rotas privadas (somente administrador): `/apps/grupos/` e `/apps/grupos/api/*` (summary, group, collector, collector/command). Reutiliza a sessão do workspace; POSTs exigem a origem da aplicação; leitores de ROI/Finanças recebem 403. Apenas `app.js` e `style.css` são públicos. HTML privado, `api.mjs`, `schema.mjs`, `tracker.mjs` e a pasta `collector/` nunca são servidos.
+Rotas privadas (somente administrador): `/apps/grupos/` e `/apps/grupos/api/*` (summary, group, accounts, accounts/:id/command, accounts/:id/rename; POST e DELETE de accounts). Reutiliza a sessão do workspace; POSTs exigem a origem da aplicação; leitores de ROI/Finanças recebem 403. Apenas `app.js` e `style.css` são públicos. HTML privado, `api.mjs`, `schema.mjs`, `tracker.mjs` e a pasta `collector/` nunca são servidos.
 
-A aplicação é **somente leitura**: não envia mensagens. Registra entradas e saídas dos grupos e o tamanho diário (calendário America/Sao_Paulo) nas tabelas próprias `wpp_groups`, `wpp_members`, `wpp_events`, `wpp_daily_size` e `wpp_collector`, criadas de forma aditiva no SQLite existente (entram no backup habitual). Telefones são mascarados na API.
+A aplicação é **somente leitura**: não envia mensagens. Registra entradas e saídas dos grupos e o tamanho diário (calendário America/Sao_Paulo), **por número de WhatsApp**, nas tabelas próprias `wpp_accounts`, `wpp_groups`, `wpp_members`, `wpp_events`, `wpp_daily_size` e `wpp_collector` (heartbeat do processo), criadas de forma aditiva no SQLite existente (entram no backup habitual). Telefones são mascarados na API.
 
 ### Dois processos
 
 1. **Servidor web (`adstudio`)**: já existente; apenas lê as tabelas. Nenhuma variável nova.
-2. **Coletor (`adstudio-grupos`)**: processo Node separado (Baileys 7), para que uma falha do WhatsApp nunca derrube o estúdio. Lê a conexão do WhatsApp, grava no mesmo SQLite (WAL, `busy_timeout`) e publica no banco o QR Code, o estado e um heartbeat de 15 s. O painel mostra "Coletor desligado" quando o heartbeat tem mais de 90 s.
+2. **Coletor (`adstudio-grupos`)**: processo Node separado (Baileys 7), para que uma falha do WhatsApp nunca derrube o estúdio. Mantém uma conexão por número cadastrado (até 10), grava no mesmo SQLite (WAL, `busy_timeout`) e publica no banco o QR Code e o estado de cada número, além de um heartbeat de 15 s. A cada 5 s verifica números novos, removidos e comandos do painel. O painel mostra "Coletor desligado" quando o heartbeat tem mais de 90 s. Reconexões usam espera crescente (4 s até 60 s).
 
 O coletor tem dependências próprias (`apps/grupos/collector/package.json`), sem alterar o `package.json` principal:
 
@@ -266,14 +266,18 @@ stderr_logfile=/var/log/adstudio-grupos.err.log
 
 Depois: `supervisorctl reread && supervisorctl update && supervisorctl status adstudio-grupos`. O coletor não lê `runtime.env` nem `STORAGE_SECRET`; precisa apenas de `DATA_DIR`.
 
-### Vincular o WhatsApp
+### Vários números
 
-Abra `/apps/grupos/`: o QR Code aparece no painel (WhatsApp → Aparelhos conectados → Conectar um aparelho). A sessão fica em `DATA_DIR/grupos-auth` (permissão do usuário da aplicação; **dá acesso total à conta de WhatsApp**: inclua no backup protegido e nunca no Git). Os botões **Sincronizar agora** e **Desvincular WhatsApp** enviam comandos ao coletor pelo banco (verificação a cada 5 s). Se a sessão for encerrada pelo celular, o coletor apaga a sessão e gera um novo QR.
+Em `/apps/grupos/`, **+ Adicionar número** cadastra um número (nome livre, até 40 caracteres, sem repetir) e o QR Code dele aparece no cartão correspondente (WhatsApp → Aparelhos conectados → Conectar um aparelho). O seletor **Número** filtra a tabela, os totais e os gráficos; em "Todos os números" a tabela mostra a coluna Número. Um grupo em que dois números estejam aparece uma vez para cada número, marcado "em mais de um número", e os totais gerais contam esse grupo uma só vez (vale a cópia de maior tamanho). Cada número tem **Sincronizar agora**, **Desvincular**, **Renomear** e **Remover**.
 
-Os números começam no dia da vinculação: o WhatsApp não informa o histórico anterior. Entradas e saídas ao vivo têm hora exata; as percebidas na conferência (a cada 30 min, `GRUPOS_SYNC_MINUTES`) aparecem como "detectado". Use de preferência um número dedicado: o uso de clientes não oficiais pode levar ao bloqueio da conta.
+As sessões ficam em `DATA_DIR/grupos-auth/<id do número>/` (permissão do usuário da aplicação; **dão acesso total às contas de WhatsApp**: nunca no Git e fora do backup oficial, que cobre só o SQLite e o `runtime.env`). **Remover** arquiva o número: o coletor desconecta o aparelho, apaga a sessão e o número some das listas e dos totais; o histórico permanece no banco. Se o WhatsApp encerrar uma sessão, o coletor apaga a pasta daquele número e gera um novo QR.
+
+**Migração da versão 1 (um número):** ao iniciar, o servidor e o coletor convertem os dados antigos para o número "Número 1" (`ensureSchema`, transacional e idempotente) e o coletor move a sessão de `grupos-auth/` para `grupos-auth/1/`, sem novo QR. Na publicação, **pare `adstudio-grupos` antes do `git pull`** e inicie-o depois de reiniciar o `adstudio`, para que a migração seja feita só pelo código novo.
+
+Os números começam no dia da vinculação: o WhatsApp não informa o histórico anterior. Entradas e saídas ao vivo têm hora exata; as percebidas na conferência (a cada 30 min, `GRUPOS_SYNC_MINUTES`) aparecem como "detectado". Use de preferência números dedicados e poucos por VPS (cada conexão usa cerca de 50 a 100 MB): o uso de clientes não oficiais pode levar ao bloqueio da conta.
 
 ### Publicar
 
 Mesmo fluxo da seção "Atualizar a instalação existente": backup, `git pull --ff-only`, `npm ci` do projeto principal, `npm ci` do coletor (somente na primeira vez ou quando `collector/package-lock.json` mudar), `supervisorctl restart adstudio` e `supervisorctl restart adstudio-grupos`. Reiniciar o coletor só interrompe a coleta por alguns segundos; a reconexão é automática e a sessão é preservada. Verifique login, cartão no dashboard, `/apps/grupos/`, retorno por "Todas as aplicações" e o estúdio; sem sessão, a página redireciona a `/login` e as APIs respondem 401.
 
-Testes: `node --test tests/grupos.test.mjs` (autenticação, permissões, arquivos privados, números persistidos, comandos, máscara de telefones e persistência após reinício). Não usam o WhatsApp.
+Testes: `node --test tests/grupos.test.mjs` (autenticação, permissões, arquivos privados, vários números, totais sem duplicar grupos, migração da versão 1, comandos por número, remoção, máscara de telefones e persistência após reinício). Não usam o WhatsApp.

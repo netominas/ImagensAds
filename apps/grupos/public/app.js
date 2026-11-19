@@ -7,7 +7,7 @@ const tone = n => (n > 0 ? 'pos' : n < 0 ? 'neg' : '');
 const number = n => Number(n ?? 0).toLocaleString('pt-BR');
 const HOW = {added: 'adicionado', joined: 'entrou sozinho', left: 'saiu sozinho', removed: 'removido', detected: 'detectado'};
 
-// Os nomes de grupos vêm do WhatsApp (não confiáveis): tudo é inserido como texto, nunca como HTML.
+// Nomes de grupos e de números vêm de fora (não confiáveis): tudo é inserido como texto, nunca como HTML.
 function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) { if (v === false || v == null) continue; if (k === 'class') el.className = v; else el.setAttribute(k, v === true ? '' : v); }
@@ -28,86 +28,123 @@ async function api(path, options = {}) {
   return data;
 }
 
-let selected = null, pollTimer = null, loadToken = 0;
+let selected = null; // {account, id} do grupo aberto
+let accountFilter = 'all', pollTimer = null, loadToken = 0, known = [];
+const post = (path, body) => api(path, {method: 'POST', body: JSON.stringify(body)});
 
-// ---------- Conexão com o WhatsApp ----------
-function renderCollector(c) {
-  const box = $('collector');
-  box.replaceChildren();
-  const when = c.lastSync ? new Date(c.lastSync * 1000).toLocaleString('pt-BR') : '—';
-  if (!c.online) {
-    box.append(h('div', {class: 'status off'}, h('strong', {}, 'Coletor desligado'),
-      h('p', {}, 'O serviço que acompanha os grupos não está em execução. Assim que ele iniciar, esta tela mostra o QR Code para vincular o WhatsApp.')));
-  } else if (c.state === 'qr') {
-    const img = h('img', {class: 'qr', width: '280', height: '280', alt: 'QR Code para vincular o WhatsApp'});
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(c.qrSvg || '');
-    box.append(h('div', {class: 'status qr-wrap'}, img, h('div', {},
-      h('strong', {}, 'Vincule o WhatsApp'),
-      h('ol', {}, h('li', {}, 'No celular, abra o WhatsApp.'), h('li', {}, 'Configurações → Aparelhos conectados → Conectar um aparelho.'), h('li', {}, 'Aponte a câmera para este QR Code.')),
-      h('p', {class: 'subtle small'}, 'O código expira e é renovado automaticamente. Use de preferência um número dedicado.'))));
-  } else if (c.state === 'open') {
+// ---------- Números conectados ----------
+function accountCard(a) {
+  const when = a.lastSync ? new Date(a.lastSync * 1000).toLocaleString('pt-BR') : '—';
+  const buttons = [];
+  const rename = h('button', {type: 'button', class: 'ghost'}, 'Renomear');
+  rename.onclick = async () => {
+    const name = prompt('Novo nome do número:', a.name);
+    if (name && name.trim() && name.trim() !== a.name) await act(() => post(`accounts/${a.id}/rename`, {name}), 'Nome atualizado.');
+  };
+  const remove = h('button', {type: 'button', class: 'danger'}, 'Remover');
+  remove.onclick = async () => {
+    if (confirm(`Remover o número “${a.name}”? Ele será desconectado do WhatsApp e a sessão apagada. O histórico fica guardado.`))
+      await act(() => api(`accounts/${a.id}`, {method: 'DELETE'}), 'Número removido.');
+  };
+  let body;
+  if (!a.online) {
+    body = h('p', {class: 'st off'}, 'Coletor desligado');
+  } else if (a.state === 'qr') {
+    const img = h('img', {class: 'qr', width: '240', height: '240', alt: `QR Code para vincular ${a.name}`});
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(a.qrSvg || '');
+    body = h('div', {class: 'qr-wrap'}, img, h('div', {},
+      h('strong', {}, 'Vincule este número'),
+      h('ol', {}, h('li', {}, 'No celular, abra o WhatsApp deste número.'), h('li', {}, 'Configurações → Aparelhos conectados → Conectar um aparelho.'), h('li', {}, 'Aponte a câmera para o QR Code.')),
+      h('p', {class: 'subtle small'}, 'O código expira e é renovado automaticamente. Use de preferência um número dedicado.')));
+  } else if (a.state === 'open') {
     const sync = h('button', {type: 'button'}, 'Sincronizar agora');
-    const relink = h('button', {type: 'button', class: 'danger'}, 'Desvincular WhatsApp');
-    sync.onclick = () => run('sync', 'Sincronização solicitada.');
-    relink.onclick = () => { if (confirm('Desvincular o WhatsApp? Será necessário escanear um novo QR Code.')) run('relink', 'Desvinculando…'); };
-    box.append(h('div', {class: 'status on'}, h('div', {}, h('strong', {}, 'Conectado'),
-      h('p', {}, `Conta ${c.account || '—'} · ${number(c.groupsCount)} grupos · última sincronização ${when}`)),
-      h('div', {class: 'actions'}, sync, relink)));
+    sync.onclick = () => act(() => post(`accounts/${a.id}/command`, {command: 'sync'}), 'Sincronização solicitada.', 6000);
+    const relink = h('button', {type: 'button', class: 'ghost'}, 'Desvincular');
+    relink.onclick = () => { if (confirm(`Desvincular “${a.name}”? Será preciso escanear um novo QR Code.`)) act(() => post(`accounts/${a.id}/command`, {command: 'relink'}), 'Desvinculando…', 6000); };
+    buttons.push(sync, relink);
+    body = h('p', {class: 'st on'}, `Conectado · ${a.phone || '—'} · ${number(a.groupsCount)} grupos · sincronizado ${when}`);
   } else {
-    box.append(h('div', {class: 'status wait'}, h('strong', {}, 'Conectando ao WhatsApp…'), h('p', {}, 'Aguarde alguns segundos.')));
+    body = h('p', {class: 'st wait'}, 'Conectando ao WhatsApp…');
   }
-  if (c.online && c.error) box.append(h('p', {class: 'warn'}, c.error));
+  return h('article', {class: 'account-card'},
+    h('div', {class: 'account-head'}, h('strong', {}, a.name), h('span', {class: 'actions'}, ...buttons, rename, remove)),
+    body, a.online && a.error ? h('p', {class: 'warn'}, a.error) : null);
+}
+const fingerprint = list => JSON.stringify(list.map(a => [a.id, a.state, a.name, a.qrSvg?.length, a.groupsCount, a.lastSync, a.online, a.error]));
+function renderAccounts(data) {
+  known = data.accounts;
+  $('collector-off').hidden = data.collectorOnline;
+  $('add-account').disabled = data.accounts.length >= data.max;
+  const box = $('accounts');
+  box.replaceChildren();
+  if (!data.accounts.length) box.append(h('p', {class: 'empty'}, 'Nenhum número ainda. Clique em “Adicionar número” e escaneie o QR Code com o WhatsApp.'));
+  for (const a of data.accounts) box.append(accountCard(a));
+  const select = $('account-filter');
+  select.replaceChildren(h('option', {value: 'all'}, 'Todos os números'), ...data.accounts.map(a => h('option', {value: String(a.id)}, a.name)));
+  if (accountFilter !== 'all' && !data.accounts.some(a => String(a.id) === accountFilter)) accountFilter = 'all';
+  select.value = accountFilter;
   clearTimeout(pollTimer);
-  pollTimer = setTimeout(refreshCollector, c.online && c.state === 'open' ? 30000 : 3000);
+  const busy = !data.collectorOnline || data.accounts.some(a => a.state !== 'open');
+  pollTimer = setTimeout(refreshAccounts, busy ? 3000 : 30000);
 }
-async function refreshCollector() {
-  try { renderCollector(await api('collector')); } catch (e) { message(e.message, true); }
+async function refreshAccounts() {
+  try { renderAccounts(await api('accounts')); } catch (e) { message(e.message, true); }
 }
-async function run(command, text) {
-  try { await api('collector/command', {method: 'POST', body: JSON.stringify({command})}); message(text); setTimeout(() => { refreshCollector(); loadSummary(); }, 6000); }
-  catch (e) { message(e.message, true); }
+async function act(call, text, reloadAfter = 0) {
+  try {
+    await call(); message(text);
+    await refreshAccounts();
+    await loadSummary();
+    if (reloadAfter) setTimeout(() => { refreshAccounts(); loadSummary().catch(() => {}); }, reloadAfter);
+  } catch (e) { message(e.message, true); }
 }
 
 // ---------- Resumo ----------
 async function loadSummary() {
   const token = ++loadToken;
-  const data = await api('summary?days=' + $('days').value);
+  const data = await api(`summary?days=${$('days').value}&account=${accountFilter}`);
   if (token !== loadToken) return;
-  renderCollector(data.collector);
+  if (fingerprint(known) !== fingerprint(data.accounts)) renderAccounts(data);
   const t = data.totals;
   $('cards').replaceChildren(
     card('Grupos', number(t.groups)), card('Membros (total)', number(t.members)),
     card('Entraram hoje', number(t.joinedToday), 'pos'), card('Saíram hoje', number(t.leftToday), 'neg'),
     card('Saldo 7 dias', signed(t.netWeek), tone(t.netWeek)));
+  const multi = data.accounts.length > 1;
+  $('groups-table').classList.toggle('hide-account', !(multi && accountFilter === 'all'));
+  $('dedupe-note').hidden = !(multi && data.groups.some(g => g.shared));
   const body = $('groups');
   body.replaceChildren();
   if (!data.groups.length) {
-    body.append(h('tr', {}, h('td', {colspan: '6', class: 'empty'}, 'Nenhum grupo ainda. Vincule o WhatsApp acima e aguarde a primeira sincronização.')));
+    body.append(h('tr', {}, h('td', {colspan: '7', class: 'empty'}, data.accounts.length ? 'Nenhum grupo ainda. Vincule o WhatsApp e aguarde a primeira sincronização.' : 'Adicione um número para começar.')));
     return;
   }
   for (const g of data.groups) {
     const week = g.joinedWeek - g.leftWeek, period = g.joinedPeriod - g.leftPeriod;
-    const tr = h('tr', {tabindex: '0', 'aria-selected': g.id === selected ? 'true' : 'false'},
-      h('td', {}, g.name, g.isAdmin ? null : h('span', {class: 'tag'}, ' (não sou admin)')),
+    const isSel = selected && selected.account === g.accountId && selected.id === g.id;
+    const tr = h('tr', {tabindex: '0', 'aria-selected': isSel ? 'true' : 'false'},
+      h('td', {}, g.name, g.isAdmin ? null : h('span', {class: 'tag'}, ' (não sou admin)'), g.shared ? h('span', {class: 'tag'}, ' (em mais de um número)') : null),
+      h('td', {class: 'col-account'}, g.accountName),
       h('td', {}, number(g.size)), h('td', {class: 'pos'}, number(g.joinedToday)), h('td', {class: 'neg'}, number(g.leftToday)),
       h('td', {class: tone(week)}, signed(week)), h('td', {class: tone(period)}, signed(period)));
-    const open = () => openGroup(g.id);
+    const open = () => openGroup(g.accountId, g.id);
     tr.onclick = open;
     tr.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
     body.append(tr);
   }
-  if (selected) openGroup(selected, false);
+  if (selected) openGroup(selected.account, selected.id, false).catch(() => {});
 }
 const card = (label, value, cls = '') => h('article', {class: 'card'}, h('span', {}, label), h('strong', {class: cls}, value));
 
 // ---------- Detalhe e gráficos ----------
-async function openGroup(id, scroll = true) {
-  selected = id;
-  const data = await api(`group?id=${encodeURIComponent(id)}&days=${$('days').value}`);
-  if (selected !== id) return;
+async function openGroup(account, id, scroll = true) {
+  selected = {account, id};
+  const data = await api(`group?account=${account}&id=${encodeURIComponent(id)}&days=${$('days').value}`);
+  if (!selected || selected.account !== account || selected.id !== id) return;
   for (const tr of $('groups').children) tr.setAttribute('aria-selected', 'false');
   $('detail').hidden = false;
   $('detail-title').textContent = data.group.name;
+  $('detail-account').textContent = 'Número: ' + (known.find(a => a.id === account)?.name || account);
   drawMoves($('chart-moves'), data.series);
   drawSize($('chart-size'), data.series);
   const rows = $('recent');
@@ -179,6 +216,12 @@ if (account) {
   window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
   window.addEventListener('storage', e => { if (e.key === 'adstudio-logout') location.replace('/login'); });
   $('days').onchange = () => loadSummary().catch(e => message(e.message, true));
+  $('account-filter').onchange = () => { accountFilter = $('account-filter').value; selected = null; $('detail').hidden = true; loadSummary().catch(e => message(e.message, true)); };
+  $('add-account').onclick = async () => {
+    const name = prompt('Nome do novo número (ex.: Promoções 1):');
+    if (name && name.trim()) await act(() => post('accounts', {name}), 'Número adicionado. Aguarde o QR Code aparecer.', 4000);
+  };
+  await refreshAccounts();
   loadSummary().catch(e => message(e.message, true));
   setInterval(() => loadSummary().catch(() => {}), 60000);
 }

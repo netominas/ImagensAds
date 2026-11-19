@@ -4,20 +4,27 @@
 <body>
 <header class="header"><a class="brand" href="/"><img src="/favicon.svg" width="42" height="42" alt="AK"><span>AK <small>Workspace</small></span></a><div class="account"><a href="/">← Todas as aplicações</a><button id="logout" type="button">Sair ↗</button></div></header>
 <main class="grupos">
-<div class="heading"><div><span class="eyebrow">COMUNIDADES</span><h1>Grupos de WhatsApp</h1><p class="subtle">Crescimento, entradas e saídas dos seus grupos. Somente leitura: nenhuma mensagem é enviada.</p></div>
-<label class="period">Período<select id="days"><option value="7">7 dias</option><option value="30" selected>30 dias</option><option value="90">90 dias</option></select></label></div>
+<div class="heading"><div><span class="eyebrow">COMUNIDADES</span><h1>Grupos de WhatsApp</h1><p class="subtle">Crescimento, entradas e saídas dos seus grupos, separados por número. Somente leitura: nenhuma mensagem é enviada.</p></div>
+<div class="filters"><label class="period">Número<select id="account-filter"><option value="all">Todos os números</option></select></label>
+<label class="period">Período<select id="days"><option value="7">7 dias</option><option value="30" selected>30 dias</option><option value="90">90 dias</option></select></label></div></div>
 <p id="message" role="status" aria-live="polite"></p>
 
-<section id="collector" class="panel" aria-label="Conexão com o WhatsApp"></section>
+<section class="panel" aria-label="Números conectados">
+<div class="panel-head"><h2>Números conectados</h2><button id="add-account" type="button">+ Adicionar número</button></div>
+<p id="collector-off" class="warn" hidden>O coletor está desligado. Assim que ele iniciar, os números voltam a ser acompanhados.</p>
+<div id="accounts" class="accounts"></div>
+</section>
 
 <section id="cards" class="cards" aria-label="Resumo"></section>
+<p id="dedupe-note" class="subtle small" hidden>Os totais não repetem um grupo que aparece em mais de um número.</p>
 
-<div class="table-wrap"><table>
-<thead><tr><th>Grupo</th><th>Membros</th><th>Entraram hoje</th><th>Saíram hoje</th><th>Saldo 7 dias</th><th>Saldo no período</th></tr></thead>
+<div class="table-wrap"><table id="groups-table">
+<thead><tr><th>Grupo</th><th class="col-account">Número</th><th>Membros</th><th>Entraram hoje</th><th>Saíram hoje</th><th>Saldo 7 dias</th><th>Saldo no período</th></tr></thead>
 <tbody id="groups"></tbody></table></div>
 
 <section id="detail" class="panel" hidden aria-live="polite">
 <h2 id="detail-title"></h2>
+<p id="detail-account" class="subtle small"></p>
 <div class="chart-box"><h3>Entradas e saídas por dia</h3><div id="chart-moves" class="chart"></div></div>
 <div class="chart-box"><h3>Total de membros</h3><div id="chart-size" class="chart"></div></div>
 <h3>Últimas entradas e saídas</h3>
