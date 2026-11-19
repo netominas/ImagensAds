@@ -228,3 +228,52 @@ O ícone de grade junto à pesquisa do bloco ROI por placement abre um diálogo,
 GET `/apps/roi/api/placement-grid?account=...&campaign=...&end=...` compõe dez leituras diárias do cache de placements, reaproveitando a conciliação e os descontos por campanha/site/dia. Não consulta provedores nem soma médias de ROI. Une canais pela chave canônica e inclui placements ativos em qualquer dia. Custo zero preserva lucro e deixa ROI indefinido; ausência de utm_content, falhas, incompatibilidades e dias sem atividade permanecem identificados, sem rateio ou zeros fabricados.
 
 POST `/apps/roi/api/placement-grid/ensure` valida o escopo de dez dias e usa a fila existente de placements para importar o que estiver ausente/desatualizado. Exige administrador, sessão e origem válida. Leitores podem consultar somente campanhas autorizadas e não iniciam coletas. O diálogo aguarda uma coleta em andamento antes de solicitar os dias restantes; fechar invalida respostas pendentes. Não cria tabelas, altera campanhas ou expõe arquivos privados. O novo módulo público `placement-grid.js` está na lista explícita de arquivos servidos. Testes em `tests/roi-placement-grid.test.mjs` cobrem datas, sinais, ausências, descontos, cache sem chamadas externas e isolamento de permissões.
+
+## Grupos de WhatsApp (monitor de crescimento)
+
+Rotas privadas (somente administrador): `/apps/grupos/` e `/apps/grupos/api/*` (summary, group, collector, collector/command). Reutiliza a sessão do workspace; POSTs exigem a origem da aplicação; leitores de ROI/Finanças recebem 403. Apenas `app.js` e `style.css` são públicos. HTML privado, `api.mjs`, `schema.mjs`, `tracker.mjs` e a pasta `collector/` nunca são servidos.
+
+A aplicação é **somente leitura**: não envia mensagens. Registra entradas e saídas dos grupos e o tamanho diário (calendário America/Sao_Paulo) nas tabelas próprias `wpp_groups`, `wpp_members`, `wpp_events`, `wpp_daily_size` e `wpp_collector`, criadas de forma aditiva no SQLite existente (entram no backup habitual). Telefones são mascarados na API.
+
+### Dois processos
+
+1. **Servidor web (`adstudio`)**: já existente; apenas lê as tabelas. Nenhuma variável nova.
+2. **Coletor (`adstudio-grupos`)**: processo Node separado (Baileys 7), para que uma falha do WhatsApp nunca derrube o estúdio. Lê a conexão do WhatsApp, grava no mesmo SQLite (WAL, `busy_timeout`) e publica no banco o QR Code, o estado e um heartbeat de 15 s. O painel mostra "Coletor desligado" quando o heartbeat tem mais de 90 s.
+
+O coletor tem dependências próprias (`apps/grupos/collector/package.json`), sem alterar o `package.json` principal:
+
+```sh
+cd /home/YSS5v8CvMVTud6Ve/apparkaconteudocom/public_html/apps/grupos/collector
+runuser -u YSS5v8CvMVTud6Ve -- env PATH=/opt/adstudio-node/bin:$PATH npm ci
+```
+
+Supervisor (arquivo novo `/etc/supervisor/conf.d/adstudio-grupos.conf`; não altera o programa `adstudio`). Confira o `adstudio.conf` existente e mantenha o mesmo usuário e diretório:
+
+```ini
+[program:adstudio-grupos]
+command=/opt/adstudio-node/bin/node --disable-warning=ExperimentalWarning apps/grupos/collector/collector.mjs
+directory=/home/YSS5v8CvMVTud6Ve/apparkaconteudocom/public_html
+user=YSS5v8CvMVTud6Ve
+environment=DATA_DIR="/home/YSS5v8CvMVTud6Ve/apparkaconteudocom/data"
+autostart=true
+autorestart=true
+startretries=10
+stopsignal=TERM
+stopwaitsecs=10
+stdout_logfile=/var/log/adstudio-grupos.log
+stderr_logfile=/var/log/adstudio-grupos.err.log
+```
+
+Depois: `supervisorctl reread && supervisorctl update && supervisorctl status adstudio-grupos`. O coletor não lê `runtime.env` nem `STORAGE_SECRET`; precisa apenas de `DATA_DIR`.
+
+### Vincular o WhatsApp
+
+Abra `/apps/grupos/`: o QR Code aparece no painel (WhatsApp → Aparelhos conectados → Conectar um aparelho). A sessão fica em `DATA_DIR/grupos-auth` (permissão do usuário da aplicação; **dá acesso total à conta de WhatsApp**: inclua no backup protegido e nunca no Git). Os botões **Sincronizar agora** e **Desvincular WhatsApp** enviam comandos ao coletor pelo banco (verificação a cada 5 s). Se a sessão for encerrada pelo celular, o coletor apaga a sessão e gera um novo QR.
+
+Os números começam no dia da vinculação: o WhatsApp não informa o histórico anterior. Entradas e saídas ao vivo têm hora exata; as percebidas na conferência (a cada 30 min, `GRUPOS_SYNC_MINUTES`) aparecem como "detectado". Use de preferência um número dedicado: o uso de clientes não oficiais pode levar ao bloqueio da conta.
+
+### Publicar
+
+Mesmo fluxo da seção "Atualizar a instalação existente": backup, `git pull --ff-only`, `npm ci` do projeto principal, `npm ci` do coletor (somente na primeira vez ou quando `collector/package-lock.json` mudar), `supervisorctl restart adstudio` e `supervisorctl restart adstudio-grupos`. Reiniciar o coletor só interrompe a coleta por alguns segundos; a reconexão é automática e a sessão é preservada. Verifique login, cartão no dashboard, `/apps/grupos/`, retorno por "Todas as aplicações" e o estúdio; sem sessão, a página redireciona a `/login` e as APIs respondem 401.
+
+Testes: `node --test tests/grupos.test.mjs` (autenticação, permissões, arquivos privados, números persistidos, comandos, máscara de telefones e persistência após reinício). Não usam o WhatsApp.
