@@ -61,3 +61,12 @@
 .grupos .empty{color:#827a91;text-align:center;padding:18px;margin:0}
 .grupos table.hide-account .col-account{display:none}
 .grupos td.col-account{color:#827a91}
+.grupos .crumbs{margin:6px 0 0;font-size:14px}
+.grupos .crumbs a{color:#6a46c9;text-decoration:none}
+.grupos .crumbs a:hover{text-decoration:underline}
+.grupos a.group-link{color:#252337;font-weight:600;text-decoration:none}
+.grupos a.group-link:hover{color:#6a46c9;text-decoration:underline}
+.grupos .tag.admin{color:#12805c;font-weight:600}
+.grupos .card small{font-size:12px;color:#827a91}
+.grupos .panel .panel-head .period{flex-direction:row;align-items:center;gap:8px}
+.grupos .card strong{overflow-wrap:anywhere}

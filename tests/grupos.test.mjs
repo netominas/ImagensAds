@@ -99,8 +99,9 @@ test('WhatsApp groups app: shared login, admin-only, private files hidden, sever
   assert.equal((await send('/apps/grupos/')).headers.get('location'),'/login');
   for(const path of [A+'summary',A+'accounts',A+'group?account=1&id=x'])assert.equal((await send(path)).status,401);
   for(const [path,method] of [[A+'accounts','POST'],[A+'accounts/1/command','POST'],[A+'accounts/1/rename','POST'],[A+'accounts/1','DELETE']])assert.equal((await send(path,method,{name:'x',command:'sync'})).status,401,path);
-  for(const path of ['/apps/grupos/private/index.html','/apps/grupos/api.mjs','/apps/grupos/schema.mjs','/apps/grupos/tracker.mjs','/apps/grupos/collector/collector.mjs','/apps/grupos/collector/package.json','/runtime.env','/data/adstudio.sqlite','/apps/grupos/public/app.js'])assert.equal((await send(path)).status,404,path);
-  assert.equal((await send('/apps/grupos/app.js')).status,200);
+  for(const path of ['/apps/grupos/private/index.html','/apps/grupos/private/grupo.html','/apps/grupos/api.mjs','/apps/grupos/schema.mjs','/apps/grupos/tracker.mjs','/apps/grupos/collector/collector.mjs','/apps/grupos/collector/package.json','/runtime.env','/data/adstudio.sqlite','/apps/grupos/public/app.js'])assert.equal((await send(path)).status,404,path);
+  assert.equal((await send('/apps/grupos/grupo')).headers.get('location'),'/login','group page needs a session');
+  for(const file of ['app.js','grupo.js','common.js'])assert.equal((await send('/apps/grupos/'+file)).status,200,file);
   assert.equal((await send('/apps/grupos/style.css')).status,200);
 
   await login(env.ADMIN_EMAIL,'grupos-test-password');
@@ -111,6 +112,9 @@ test('WhatsApp groups app: shared login, admin-only, private files hidden, sever
   assert.equal((await send('/apps/criativos/')).status,200,'studio untouched');
   assert.equal((await send('/apps/financas/')).status,200,'finance untouched');
   assert.equal((await send('/apps/grupos/','POST')).status,405);
+  const groupPage=await send('/apps/grupos/grupo?account=1&id=x');
+  assert.equal(groupPage.status,200);assert.match(await groupPage.text(),/ANÁLISE DO GRUPO/);
+  assert.equal((await send('/apps/grupos/grupo','POST')).status,405);
 
   // números: criar, validar, renomear
   assert.deepEqual((await json(A+'accounts')).accounts,[]);
@@ -146,6 +150,15 @@ test('WhatsApp groups app: shared login, admin-only, private files hidden, sever
   assert.deepEqual(only1.groups.map(g=>g.name).sort(),['A','B']);
   const a1=only1.groups.find(g=>g.name==='A');assert.deepEqual([a1.size,a1.joinedToday,a1.leftToday],[2,1,2]);
   assert.deepEqual([only1.totals.groups,only1.totals.members,only1.totals.joinedToday,only1.totals.leftToday,only1.totals.netWeek],[2,3,1,2,-1]);
+  // filtro por administrador
+  storage.db.prepare("UPDATE wpp_groups SET is_admin=1 WHERE account_id=? AND id='B@g.us'").run(id1);
+  const mine=await json(A+'summary?days=7&admin=yes');
+  assert.deepEqual(mine.groups.map(g=>g.name),['B']);assert.equal(mine.admin,'yes');
+  assert.deepEqual([mine.totals.groups,mine.totals.members],[1,1],'totals follow the admin filter');
+  const notMine=await json(A+`summary?days=7&admin=no&account=${id1}`);
+  assert.deepEqual(notMine.groups.map(g=>g.name),['A']);
+  assert.equal((await json(A+'summary?days=7&admin=all')).groups.length,4);
+  assert.equal((await send(A+'summary?admin=talvez')).status,400);
   const only2=await json(A+`summary?days=30&account=${id2}`);
   assert.equal(only2.groups.length,2);assert.equal(only2.totals.joinedToday,1);
   assert.equal((await send(A+'summary?account=abc')).status,400);
@@ -156,6 +169,7 @@ test('WhatsApp groups app: shared login, admin-only, private files hidden, sever
   assert.equal(detail.series.length,3);
   assert.deepEqual(detail.series.at(-1),{day:saoPauloDay(),joined:1,left:2,size:2});
   assert.equal(detail.recent.length,3);assert.equal(detail.group.accountId,id1);
+  assert.deepEqual([detail.group.isAdmin,detail.group.accountName,detail.group.alsoIn],[false,'Promoções 1',['Cupons']],'group page shows number, admin flag and other numbers');
   assert.doesNotMatch(JSON.stringify(detail),/55119000000[0-9]/,'phones are masked');
   assert.match(detail.recent[0].phone,/•••••/);
   assert.equal((await send(A+'group?id=A%40g.us')).status,400,'account required');

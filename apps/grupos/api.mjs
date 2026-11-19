@@ -58,7 +58,13 @@ export function createGruposAPI(storage,{clock=()=>new Date()}={}){
   return row;
  }
 
- function summary(days,account){
+ function adminParam(url){
+  const raw=url.searchParams.get('admin')??'all';
+  if(!['all','yes','no'].includes(raw))fail('Filtro de administrador inválido.');
+  return raw;
+ }
+
+ function summary(days,account,admin='all'){
   const list=lastDays(days,clock),today=list[list.length-1],week=lastDays(7,clock)[0],from=list[0];
   const rows0=db.prepare(`SELECT g.account_id,g.id,g.name,g.size,g.is_admin,a.name AS account_name
    FROM wpp_groups g JOIN wpp_accounts a ON a.id=g.account_id
@@ -77,7 +83,7 @@ export function createGruposAPI(storage,{clock=()=>new Date()}={}){
     shared:copies.get(g.id)>1,joinedToday:s.joined_today||0,leftToday:s.left_today||0,
     joinedWeek:s.joined_week||0,leftWeek:s.left_week||0,joinedPeriod:s.joined_period||0,leftPeriod:s.left_period||0};
   });
-  const rows=account===null?all:all.filter(g=>g.accountId===account);
+  const rows=all.filter(g=>(account===null||g.accountId===account)&&(admin==='all'||g.isAdmin===(admin==='yes')));
   // Totais não repetem um grupo que aparece em mais de um número: vale o registro de maior tamanho.
   const seen=new Set(),totals={groups:0,members:0,joinedToday:0,leftToday:0,netWeek:0,netPeriod:0};
   for(const g of [...rows].sort((a,b)=>b.size-a.size)){
@@ -85,12 +91,15 @@ export function createGruposAPI(storage,{clock=()=>new Date()}={}){
    totals.groups++;totals.members+=g.size;totals.joinedToday+=g.joinedToday;totals.leftToday+=g.leftToday;
    totals.netWeek+=g.joinedWeek-g.leftWeek;totals.netPeriod+=g.joinedPeriod-g.leftPeriod;
   }
-  return {days,account,...accounts(),totals,groups:rows};
+  return {days,account,admin,...accounts(),totals,groups:rows};
  }
 
  function detail(account,id,days){
-  const group=db.prepare('SELECT id,name,size FROM wpp_groups WHERE account_id=? AND id=?').get(account,id);
+  const group=db.prepare('SELECT id,name,size,is_admin FROM wpp_groups WHERE account_id=? AND id=?').get(account,id);
   if(!group)fail('Grupo não encontrado.',404);
+  const accountName=db.prepare('SELECT name FROM wpp_accounts WHERE id=?').get(account)?.name||'';
+  const alsoIn=db.prepare(`SELECT a.name FROM wpp_groups g JOIN wpp_accounts a ON a.id=g.account_id
+   WHERE g.id=? AND g.account_id<>? AND g.active=1 AND a.removed=0 ORDER BY a.id`).all(id,account).map(r=>r.name);
   const list=lastDays(days,clock);
   const moves=new Map(db.prepare(`SELECT day,SUM(kind='join') AS joined,SUM(kind='leave') AS left
    FROM wpp_events WHERE account_id=? AND group_id=? AND day>=? GROUP BY day`).all(account,id,list[0]).map(r=>[r.day,r]));
@@ -102,8 +111,9 @@ export function createGruposAPI(storage,{clock=()=>new Date()}={}){
    return {day,joined:moves.get(day)?.joined||0,left:moves.get(day)?.left||0,size:last};
   });
   const recent=db.prepare(`SELECT kind,detail,phone,source,ts FROM wpp_events WHERE account_id=? AND group_id=?
-   ORDER BY ts DESC,id DESC LIMIT 50`).all(account,id).map(r=>({...r,phone:mask(r.phone)}));
-  return {group:{...camel(group),accountId:account},series,recent};
+   ORDER BY ts DESC,id DESC LIMIT 100`).all(account,id).map(r=>({...r,phone:mask(r.phone)}));
+  const {isAdmin,...rest}=camel(group);
+  return {group:{...rest,isAdmin:!!isAdmin,accountId:account,accountName,alsoIn},series,recent};
  }
 
  function createAccount(data){
@@ -143,7 +153,7 @@ export function createGruposAPI(storage,{clock=()=>new Date()}={}){
   const body=async()=>{try{return await request.json();}catch{return fail('Dados inválidos.');}};
   try{
    if(method==='GET'){
-    if(path==='/apps/grupos/api/summary')return authJSON(summary(daysParam(url),accountId(url.searchParams.get('account')??'all')));
+    if(path==='/apps/grupos/api/summary')return authJSON(summary(daysParam(url),accountId(url.searchParams.get('account')??'all'),adminParam(url)));
     if(path==='/apps/grupos/api/group')return authJSON(detail(accountId(url.searchParams.get('account')),url.searchParams.get('id')||'',daysParam(url)));
     if(path==='/apps/grupos/api/accounts')return authJSON(accounts());
    }
