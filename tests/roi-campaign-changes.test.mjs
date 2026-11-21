@@ -46,7 +46,7 @@ test('change API reads local data only, enforces available accounts and rejects 
  try{
   assert.equal((await request('POST',note,'https://evil.test')).status,403);assert.equal((await request('POST',{...note,account:'1111111111'})).status,403);
   const created=await request('POST',note);assert.equal(created.status,200);const {id}=await created.json();const read=await(await request('GET')).json();assert.equal(read.items.length,1);assert.ok(read.types.some(t=>t.value==='landing_page'));
-  assert.equal((await request('POST',{...note,id,date:'2026-02-31'})).status,400);assert.equal((await request('POST',{...note,id,type:'landing_page',description:'Nova página.'})).status,200);assert.equal((await(await request('GET')).json()).items[0].description,'Nova página.');
+  assert.equal((await request('POST',{...note,id,date:'2026-02-31'})).status,400);assert.equal((await request('POST',{...note,id,type:'general',description:'Nova página.'})).status,200);const updated=await(await request('GET')).json();assert.equal(updated.items[0].description,'Nova página.');assert.equal(updated.items[0].type,'general');assert.equal(updated.types.find(t=>t.value==='general').label,'Geral');
   assert.equal((await request('DELETE',{account,campaign,id},'https://evil.test')).status,403);assert.equal((await request('DELETE',{account,campaign,id})).status,200);assert.equal((await(await request('GET')).json()).items.length,0);
  }finally{api.stopAuto();db.close();}
 });

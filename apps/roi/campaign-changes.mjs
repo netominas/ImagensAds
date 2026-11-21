@@ -5,7 +5,7 @@ export const changeTypes=[
  ['budget_increase','Aumento de orçamento'],['budget_decrease','Redução de orçamento'],
  ['cpa_increase','Aumento de CPA'],['cpa_decrease','Redução de CPA'],
  ['roas','Alteração de ROAS'],['pricing','Regra de preço'],['landing_page','Alteração de landing page'],
- ['creative','Alteração de criativos'],['targeting','Alteração de segmentação'],['status','Status da campanha'],['other','Outra alteração']
+ ['creative','Alteração de criativos'],['targeting','Alteração de segmentação'],['status','Status da campanha'],['general','Geral'],['other','Outra alteração']
 ].map(([value,label])=>({value,label}));
 
 export function createCampaignChanges(db){

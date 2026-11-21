@@ -141,3 +141,5 @@ body.sidebar-hidden{grid-template-columns:minmax(0,1fr)}.sidebar-toggle{display:
 .quick-roi-table table{width:100%;min-width:0;border-collapse:collapse;font-size:12px;line-height:1.4;font-variant-numeric:tabular-nums}
 .quick-roi-table th,.quick-roi-table td{position:static;padding:7px 4px;text-align:right;white-space:nowrap;border-bottom:1px solid #e6edf4}
 .quick-roi-table th:first-child,.quick-roi-table td:first-child{text-align:left}
+
+.campaign-note-button{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:25px;height:24px;padding:3px;margin-left:6px;border:1px solid #ceddeb;border-radius:4px;background:#f3f7fc;color:#245f9e;cursor:pointer}.campaign-note-button:hover{background:#e4eefb}.campaign-note-button:focus-visible{outline:2px solid #286bd5;outline-offset:2px}.quick-change-dialog textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:5px;background:#f8fafc;color:inherit;font:inherit;resize:vertical}.quick-change-type,.quick-change-dialog #quick-change-message{font-size:13px}.quick-change-dialog #quick-change-name{overflow-wrap:anywhere}

@@ -1,3 +1,30 @@
+export function quickCampaignChange({api,readOnly=false,onSaved=()=>{},onOpen=()=>{}}){
+ const $=id=>document.getElementById(id),dialog=$('quick-change-dialog'),form=$('quick-change-form');
+ let context=null,trigger=null,saving=false;
+ const message=(text,error=false)=>{$('quick-change-message').textContent=text;$('quick-change-message').classList.toggle('negative',error);};
+ function lock(value){saving=value;for(const control of form.elements)control.disabled=value;$('quick-change-close').disabled=value;}
+ function close(){if(!saving)dialog.close();}
+ function open(button){
+  if(readOnly||saving||dialog.open)return;
+  onOpen();trigger=button;context={account:button.dataset.noteAccount,campaign:button.dataset.noteCampaign,id:crypto.randomUUID().replaceAll('-','')};
+  form.reset();$('quick-change-name').textContent=button.dataset.noteName;
+  $('quick-change-date').value=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  message('');dialog.showModal();$('quick-change-description').focus();
+ }
+ $('quick-change-close').onclick=close;$('quick-change-cancel').onclick=close;
+ dialog.addEventListener('cancel',event=>{if(saving)event.preventDefault();});
+ dialog.addEventListener('close',()=>{context=null;const old=trigger;trigger=null;if(old?.isConnected)old.focus();});
+ form.onsubmit=async event=>{
+  event.preventDefault();if(readOnly||saving||!context||!form.reportValidity())return;
+  const body={...context,type:'general',date:$('quick-change-date').value,description:$('quick-change-description').value};
+  lock(true);message('Salvando…');
+  try{await api('/campaign-changes',body);onSaved(body);lock(false);dialog.close();}
+  catch(error){message(error.message,true);}
+  finally{lock(false);}
+ };
+ return {bind(root){if(readOnly)return;root.querySelectorAll('[data-note-account]').forEach(button=>button.onclick=()=>open(button));}};
+}
+
 export function campaignChangePanel({api,onSaved=()=>{},onLoaded=()=>{}}){
  const $=id=>document.getElementById(id),panel=$('campaign-changes'),form=$('change-form');
  const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
