@@ -13,5 +13,5 @@ export function cpaIndicator(bidding,{valueOnly=false}={}){
  const checked=new Date(bidding.checked_at).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'});
  const title=`CPA alvo: ${amount} · Meta da campanha${bidding.portfolio?' (portfólio)':''} · Consultado em ${checked}. Configuração observada na coleta; não representa o CPA realizado nem o histórico diário de lances.`;
  const esc=value=>value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
- return valueOnly?`<span class="campaign-cpa-value" tabindex="0" title="${esc(title)}" aria-label="${esc(title)}">${esc(amount)}</span>`:`<button type="button" class="campaign-cpa-indicator" title="${esc(title)}" aria-label="${esc(title)}">CPA</button>`;
+ return valueOnly?`<span class="campaign-cpa-value" tabindex="0" title="${esc(title)}" aria-label="${esc(title)}">CPA: ${esc(amount)}</span>`:`<button type="button" class="campaign-cpa-indicator" title="${esc(title)}" aria-label="${esc(title)}">CPA</button>`;
 }
