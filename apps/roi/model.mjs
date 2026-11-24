@@ -3,13 +3,14 @@ import {gamMetrics} from './public/gam-metrics.js';
 import {getDomain} from 'tldts';
 import {toBRL} from './fx.mjs';
 export function site(value){try{const host=new URL(value.includes('://')?value:'https://'+value).hostname.toLowerCase();return getDomain(host,{allowPrivateDomains:true})||'';}catch{return '';}}
+export function campaignSite(value){try{const u=new URL(value.includes('://')?value:'https://'+value),host=u.hostname.toLowerCase().replace(/^www\./,'');return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password&&site(host)?host:'';}catch{return '';}}
 export function finalURLs(values){
  if(!Array.isArray(values))return [];
  return [...new Set(values.flatMap(value=>{if(typeof value!=='string'||value.length>8192)return [];try{const u=new URL(value);return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password?[u.href]:[];}catch{return [];}}))];
 }
 // UTM values are case-sensitive. Decode URL query values exactly once at extraction.
 export function attribution(url,campaign,customer={},group={},ad={}){
- const domain=site(url),custom=new Map();for(const level of [campaign,group,ad])for(const v of level.urlCustomParameters||[])custom.set(v.key,v.value);
+ const domain=campaignSite(url),custom=new Map();for(const level of [campaign,group,ad])for(const v of level.urlCustomParameters||[])custom.set(v.key,v.value);
  const expand=s=>String(s||'').replace(/\{campaignid\}/gi,campaign.id).replace(/\{_([^}]+)\}/g,(m,key)=>custom.get(key)??m);
  const template=[ad,group,campaign,customer].find(x=>x.trackingUrlTemplate)?.trackingUrlTemplate;
  const suffix=[ad,group,campaign,customer].find(x=>x.finalUrlSuffix)?.finalUrlSuffix;
@@ -33,21 +34,24 @@ export function revenueFacts(report,network,keyName='utm_campaign',mediumKey){
  }return output;
 }
 export function reconcile(costs,revenues,rates,rules=[],{partial=false}={}){
+ // Recover precise destinations from saved URLs without rewriting historical facts.
+ costs=costs.map(c=>{const urls=finalURLs(c.final_urls),hosts=[...new Set(urls.map(campaignSite).filter(Boolean))];return urls.length&&hosts.length&&hosts.every(h=>site(h)===site(c.site))?{...c,site:hosts.length===1?hosts[0]:''}:c;});
  const campaigns=new Map(),index=new Map(),rows=new Map(),key=(...v)=>JSON.stringify(v);
- const addIndex=(s,u,c)=>{if(!s||!u)return;const k=key(s,u);if(!index.has(k))index.set(k,new Set());index.get(k).add(c);};
+ const addIndex=(s,u,c)=>{if(!s||!u)return;const k=key(site(s),u);if(!index.has(k))index.set(k,new Set());index.get(k).add(c);};
  for(const c of costs){const cid=key(c.account,c.campaign);if(!campaigns.has(cid))campaigns.set(cid,[]);campaigns.get(cid).push(c);for(const utm of [c.utm,...(c.attribution_utms||[])])addIndex(c.site,utm,cid);addIndex(c.site,c.campaign,cid);}
  function entry(c,s){const k=key(c.account,c.campaign,s);if(!rows.has(k))rows.set(k,{key:k,account:c.account,account_name:c.account_name,campaign:c.campaign,campaign_type:c.campaign_type||null,name:c.name,site:s,final_urls:[],cost:0,revenue:0,utms:[],networks:[],status:'cost_only',impressions:0,missing_fx:false,cost_fx_missing:false,revenue_fx_missing:false,cost_original:[],revenue_original:[],gam_original:[],ads_original:[]});return rows.get(k);}
  for(const c of costs){const r=entry(c,c.site);if(c.campaign_type)r.campaign_type=c.campaign_type;if(c.bidding&&(!r.bidding||c.bidding.checked_at>=r.bidding.checked_at))r.bidding=c.bidding;const amount=toBRL(c.cost,c.currency,c.date,rates);if(amount===null){r.missing_fx=true;r.cost_fx_missing=true;}else r.cost+=amount;r.ads_original.push({date:c.date,currency:c.currency,ads_metrics:c.ads_metrics||null});r.cost_original.push({amount:c.cost,currency:c.currency,date:c.date});for(const utm of [c.utm,...(c.attribution_utms||[])])if(utm&&!r.utms.includes(utm))r.utms.push(utm);for(const url of finalURLs(c.final_urls))if(!r.final_urls.includes(url))r.final_urls.push(url);}
  let unmatchedRevenue=0,ambiguousRevenue=0,matchedRevenue=0;const pending=[];
  for(const revenue of revenues){
-  const rule=rules.find(r=>r.network===revenue.network&&r.site===revenue.site&&r.utm===revenue.utm),candidates=rule?new Set([key(rule.account,rule.campaign)]):index.get(key(revenue.site,revenue.utm))||new Set();
+  const rule=rules.find(r=>r.network===revenue.network&&r.site===revenue.site&&r.utm===revenue.utm),candidates=rule?new Set([key(rule.account,rule.campaign)]):index.get(key(site(revenue.site),revenue.utm))||new Set();
   const valid=[...candidates].filter(cid=>campaigns.has(cid));const amount=toBRL(revenue.revenue,revenue.currency,revenue.date,rates);
   if(valid.length!==1){const status=valid.length>1?'ambiguous':'revenue_only';pending.push({...revenue,status,revenue_brl:amount,candidates:valid.map(cid=>({account:campaigns.get(cid)[0].account,campaign:campaigns.get(cid)[0].campaign,name:campaigns.get(cid)[0].name}))});if(amount!==null){if(valid.length>1)ambiguousRevenue+=amount;else unmatchedRevenue+=amount;}continue;}
-  const cs=campaigns.get(valid[0]),c=cs.find(c=>c.site===revenue.site);if(!c){pending.push({...revenue,status:'revenue_only',revenue_brl:amount,candidates:[]});if(amount!==null)unmatchedRevenue+=amount;continue;}
-  const r=entry(c,revenue.site);if(c.timezone!==revenue.timezone){r.timezone_mismatch=true;}
+  const cs=campaigns.get(valid[0]).filter(c=>c.site&&site(c.site)===site(revenue.site)&&(rule||c.campaign===revenue.utm||[c.utm,...(c.attribution_utms||[])].includes(revenue.utm))),dated=cs.filter(c=>c.date===revenue.date),possible=dated.length?dated:cs,hosts=[...new Set(possible.map(c=>c.site))],c=possible[0];
+  if(hosts.length!==1){const ambiguous=hosts.length>1;pending.push({...revenue,status:ambiguous?'ambiguous':'revenue_only',revenue_brl:amount,candidates:ambiguous?[{account:c.account,campaign:c.campaign,name:c.name}]:[]});if(amount!==null){if(ambiguous)ambiguousRevenue+=amount;else unmatchedRevenue+=amount;}continue;}
+  const r=entry(c,c.site);if(c.timezone!==revenue.timezone){r.timezone_mismatch=true;}
   r.status='matched';if(amount===null){r.missing_fx=true;r.revenue_fx_missing=true;}else{r.revenue+=amount;matchedRevenue+=amount;}r.gam_original.push({...revenue});r.impressions+=revenue.impressions;if(!r.utms.includes(revenue.utm))r.utms.push(revenue.utm);if(!r.networks.includes(revenue.network))r.networks.push(revenue.network);r.revenue_original.push({amount:revenue.revenue,currency:revenue.currency,date:revenue.date});
  }
- const result=[...rows.values()];for(const r of result){Object.assign(r,gamMetrics(r.gam_original,rates),adsMetrics(r.ads_original,rates));r.ambiguous=pending.some(p=>p.status==='ambiguous'&&p.site===r.site&&p.candidates.some(c=>c.account===r.account&&c.campaign===r.campaign));r.comparable=r.status==='matched'&&!r.missing_fx&&!r.timezone_mismatch&&!r.ambiguous&&!partial;r.profit=r.comparable?r.revenue-r.cost:null;r.roi=r.comparable&&r.cost>0?r.profit/r.cost:null;if(r.status!=='matched'||r.revenue_fx_missing)r.revenue=null;if(r.cost_fx_missing)r.cost=null;}
+ const result=[...rows.values()];for(const r of result){Object.assign(r,gamMetrics(r.gam_original,rates),adsMetrics(r.ads_original,rates));r.ambiguous=pending.some(p=>p.status==='ambiguous'&&site(p.site)===site(r.site)&&p.candidates.some(c=>c.account===r.account&&c.campaign===r.campaign));r.comparable=r.status==='matched'&&!r.missing_fx&&!r.timezone_mismatch&&!r.ambiguous&&!partial;r.profit=r.comparable?r.revenue-r.cost:null;r.roi=r.comparable&&r.cost>0?r.profit/r.cost:null;if(r.status!=='matched'||r.revenue_fx_missing)r.revenue=null;if(r.cost_fx_missing)r.cost=null;}
  const eligible=result.filter(r=>r.comparable),totals={cost:eligible.reduce((s,r)=>s+r.cost,0),revenue:eligible.reduce((s,r)=>s+r.revenue,0)};totals.profit=totals.revenue-totals.cost;totals.roi=totals.cost>0?totals.profit/totals.cost:null;
  const sites=new Map();for(const r of result){const s=r.site||'Sem site identificado';if(!sites.has(s))sites.set(s,{site:s,cost:0,revenue:0,campaigns:0,pending:0,compared:0});const g=sites.get(s);g.campaigns++;if(r.comparable){g.compared++;g.cost+=r.cost;g.revenue+=r.revenue;}else g.pending++;}
  for(const r of new Map(pending.map(p=>[key(p.network,p.site,p.utm),p])).values()){const s=r.site||'Sem site identificado';if(!sites.has(s))sites.set(s,{site:s,cost:0,revenue:0,campaigns:0,pending:0,compared:0});sites.get(s).pending++;}

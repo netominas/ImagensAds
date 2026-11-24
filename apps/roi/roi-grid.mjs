@@ -1,7 +1,7 @@
 import {shiftDay,daysBetween} from './warehouse.mjs';
 import {dateRange} from './admanager.mjs';
 import {today} from './fx.mjs';
-import {site as domain,finalURLs} from './model.mjs';
+import {campaignSite as domain,finalURLs} from './model.mjs';
 import {AdsError} from '../google-ads/client.mjs';
 
 export function gridPeriod(site,end=today()){

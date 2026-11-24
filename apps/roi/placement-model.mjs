@@ -2,7 +2,15 @@ import {shareRate,deductionSummary} from './deductions.mjs';
 import {adsMetrics} from './public/ads-metrics.js';
 import {gamMetrics} from './public/gam-metrics.js';
 import {toBRL} from './fx.mjs';
-import {revenueFacts} from './model.mjs';
+import {revenueFacts,site} from './model.mjs';
+
+export function placementTaxContext(days,date,host){
+ const matches=(days||[]).filter(d=>d.date===date&&(host===site(host)?site(d.site)===host:d.site===host));
+ if(matches.length===1)return matches[0];
+ if(!matches.length||matches.some(d=>d.tax_rate==null||!Number.isFinite(d.gross_revenue)||!Number.isFinite(d.revenue_share)||!Number.isFinite(d.company_tax)))return null;
+ const base=matches.reduce((s,d)=>s+d.gross_revenue-d.revenue_share,0),tax=matches.reduce((s,d)=>s+d.company_tax,0);
+ return {tax_rate:base>0?tax/base:0};
+}
 
 // Keep subdomains and paths: reducing to registrable domains can merge distinct publishers.
 export function placementKey(value,type=''){
@@ -20,7 +28,7 @@ export function placementReport({account,campaign,start,end,ads=[],revenues=[],t
  for(const f of revenues.filter(f=>f.campaign===campaign&&f.date>=start&&f.date<=end))entry(f.placement_key||'gam:unknown',f.placement).gam.push(f);
  const sum=(facts,field)=>{if(!facts.length)return null;let n=0;for(const f of facts){const value=toBRL(f[field],f.currency,f.date,rates);if(!Number.isFinite(value))return null;n+=value;}return n;};
  let revenueTotal=sum(revenues.filter(r=>r.campaign===campaign),'revenue'),overlap=baseline?.revenue!=null&&revenueTotal!=null&&revenueTotal>baseline.revenue+Math.max(.01,baseline.revenue*.01);
- const items=[...rows.values()].map(r=>{const cost=sum(r.ads,'cost'),gross_revenue=sum(r.gam,'revenue');let revenue=gross_revenue,deductions_pending=false,revenue_share=0,company_tax=0;const config=baseline?.deductions;if(config?.enabled&&gross_revenue!=null){revenue=0;for(const f of r.gam){const gross=toBRL(f.revenue,f.currency,f.date,rates),share=gross*shareRate(config,f.network),after=gross-share,context=baseline.deduction_days?.find(d=>d.date===f.date&&d.site===f.site);const taxed=config.tax_enabled&&config.tax_percent>0;let taxRate=0;if(taxed&&config.tax_base==='revenue')taxRate=config.tax_percent/100;else if(taxed){if(context?.tax_rate==null)deductions_pending=true;else taxRate=context.tax_rate;}const tax=after*taxRate;revenue+=after-tax;revenue_share+=share;company_tax+=tax;}if(deductions_pending)revenue=null;}const timezone=r.ads.length&&r.gam.some(f=>r.ads.some(a=>a.timezone!==f.timezone));
+ const items=[...rows.values()].map(r=>{const cost=sum(r.ads,'cost'),gross_revenue=sum(r.gam,'revenue');let revenue=gross_revenue,deductions_pending=false,revenue_share=0,company_tax=0;const config=baseline?.deductions;if(config?.enabled&&gross_revenue!=null){revenue=0;for(const f of r.gam){const gross=toBRL(f.revenue,f.currency,f.date,rates),share=gross*shareRate(config,f.network),after=gross-share,context=placementTaxContext(baseline.deduction_days,f.date,f.site);const taxed=config.tax_enabled&&config.tax_percent>0;let taxRate=0;if(taxed&&config.tax_base==='revenue')taxRate=config.tax_percent/100;else if(taxed){if(context?.tax_rate==null)deductions_pending=true;else taxRate=context.tax_rate;}const tax=after*taxRate;revenue+=after-tax;revenue_share+=share;company_tax+=tax;}if(deductions_pending)revenue=null;}const timezone=r.ads.length&&r.gam.some(f=>r.ads.some(a=>a.timezone!==f.timezone));
   const matched=!!r.ads.length&&!!r.gam.length&&r.key.startsWith('web:')&&complete&&!stale&&!collision&&!overlap&&!timezone&&!deductions_pending&&cost!=null&&revenue!=null;
   const status=deductions_pending?'deductions_pending':collision?'ambiguous_campaign':timezone?'timezone':overlap?'revenue_overlap':!complete||stale?'incomplete':matched?'matched':r.ads.length&&r.gam.length&&!r.key.startsWith('web:')?'unmapped_type':r.ads.length?'cost_only':'revenue_only';
   return {placement:r.placement,type:r.type||'WEBSITE',key:r.key,cost,revenue,gross_revenue,revenue_share,company_tax,profit:matched?revenue-cost:null,roi:matched&&cost>0?(revenue-cost)/cost:null,comparable:matched,status,clicks:r.ads.length?r.ads.reduce((s,f)=>s+f.clicks,0):null,impressions:r.ads.length?r.ads.reduce((s,f)=>s+f.impressions,0):null,...adsMetrics(r.ads,rates),...gamMetrics(r.gam,rates),sites:[...new Set(r.gam.map(f=>f.site))]};
