@@ -1,4 +1,4 @@
-import {cpaIndicator} from './campaign-bidding.js';
+import {cpaIndicator,latestCampaignBidding} from './campaign-bidding.js';
 import {campaignQuickROI} from './campaign-quick-roi.js';
 import {roiGridPanel} from './roi-grid.js';
 import {placementsPanel} from './placements.js';
@@ -147,6 +147,7 @@ function renderCampaignDetail(){
  $('campaign-budget').onclick=()=>void budgetsUI.open(state.account,state.campaign);$('campaign-budget').dataset.budgetAccount=state.account;$('campaign-budget').dataset.budgetCampaign=state.campaign;$('campaign-detail-name').textContent=name;$('campaign-detail-name').title=name;const siteLabel=$('site').value||rows[0]?.site||'',urls=finalURLTargets({final_urls:rows.flatMap(row=>row.final_urls||[])});
  const siteLinks=urls.map((u,i)=>'<a class="campaign-page-link" href="'+esc(u.href)+'" target="_blank" rel="noopener noreferrer" title="'+esc(u.href)+'" aria-label="Abrir página da campanha: '+esc(u.href)+'">'+esc(siteLabel&&siteLabel!=='Sem site identificado'?siteLabel:u.hostname)+(urls.length>1?' ('+(i+1)+')':'')+'</a>').join(' · ');
  $('campaign-detail-meta-content').innerHTML='ID '+googleAdsID({account:state.account,campaign:state.campaign})+' · '+'<span class="campaign-type" data-type-account="'+esc(state.account)+'" data-type-campaign="'+esc(state.campaign)+'" title="Tipo de campanha no Google Ads">'+esc(campaignTypeLabel(rows.find(row=>row.campaign_type)?.campaign_type))+'</span>'+(siteLinks?' · '+siteLinks:siteLabel?' · '+esc(siteLabel):'');
+ $('campaign-detail-cpa').innerHTML=cpaIndicator(latestCampaignBidding(rows),{valueOnly:true});
  $('campaign-back').href=campaignPath($('site').value);$('campaign-back').onclick=e=>{if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button!==0)return;e.preventDefault();navigate(campaignPath($('site').value));};
  $('breadcrumb').textContent='Relatório da campanha';$('page-title').textContent=name;document.title=name+' · ROI AK Workspace';
 }

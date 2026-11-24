@@ -1,9 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {campaignBidding,cpaIndicator} from '../apps/roi/public/campaign-bidding.js';
+import {campaignBidding,cpaIndicator,latestCampaignBidding} from '../apps/roi/public/campaign-bidding.js';
 import {costFacts} from '../apps/roi/ads.mjs';
 import {reconcile} from '../apps/roi/model.mjs';
 const checked='2026-11-24T12:00:00.000Z';
+test('campaign detail displays only the latest target value and clears a removed target',()=>{
+ const old={type:'TARGET_CPA',target_cpa:.35,currency:'BRL',checked_at:checked},current={...old,target_cpa:.5,checked_at:'2026-11-24T13:00:00Z'};
+ for(const rows of [[{bidding:old},{bidding:current}],[{bidding:current},{bidding:old}]]){
+  const html=cpaIndicator(latestCampaignBidding(rows),{valueOnly:true});assert.match(html,/>R\$.*0,50<\/span>/);assert.doesNotMatch(html,/>CPA</);
+ }
+ assert.equal(cpaIndicator(latestCampaignBidding([{bidding:old},{bidding:{...current,target_cpa:null}}]),{valueOnly:true}),'');assert.equal(cpaIndicator(latestCampaignBidding([]),{valueOnly:true}),'');
+});
 test('CPA indicator reads standard and portfolio targets and hides absent or unrelated targets',()=>{
  for(const type of ['MAXIMIZE_CONVERSIONS','TARGET_CPA'])for(const portfolio of [false,true]){
   const scheme=type==='MAXIMIZE_CONVERSIONS'?{maximizeConversions:{targetCpaMicros:'500000'}}:{targetCpa:{targetCpaMicros:'500000'}};
