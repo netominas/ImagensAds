@@ -99,15 +99,16 @@ test('WhatsApp groups app: shared login, admin-only, private files hidden, sever
   assert.equal((await send('/apps/grupos/')).headers.get('location'),'/login');
   for(const path of [A+'summary',A+'accounts',A+'group?account=1&id=x'])assert.equal((await send(path)).status,401);
   for(const [path,method] of [[A+'accounts','POST'],[A+'accounts/1/command','POST'],[A+'accounts/1/rename','POST'],[A+'accounts/1','DELETE']])assert.equal((await send(path,method,{name:'x',command:'sync'})).status,401,path);
-  for(const path of ['/apps/grupos/private/index.html','/apps/grupos/private/grupo.html','/apps/grupos/api.mjs','/apps/grupos/schema.mjs','/apps/grupos/tracker.mjs','/apps/grupos/collector/collector.mjs','/apps/grupos/collector/package.json','/runtime.env','/data/adstudio.sqlite','/apps/grupos/public/app.js'])assert.equal((await send(path)).status,404,path);
+  for(const path of ['/apps/grupos/private/index.html','/apps/grupos/private/grupo.html','/apps/grupos/private/numeros.html','/apps/grupos/api.mjs','/apps/grupos/schema.mjs','/apps/grupos/tracker.mjs','/apps/grupos/collector/collector.mjs','/apps/grupos/collector/package.json','/runtime.env','/data/adstudio.sqlite','/apps/grupos/public/app.js'])assert.equal((await send(path)).status,404,path);
   assert.equal((await send('/apps/grupos/grupo')).headers.get('location'),'/login','group page needs a session');
-  for(const file of ['app.js','grupo.js','common.js'])assert.equal((await send('/apps/grupos/'+file)).status,200,file);
+  assert.equal((await send('/apps/grupos/numeros')).headers.get('location'),'/login','numbers page needs a session');
+  for(const file of ['app.js','grupo.js','numeros.js','common.js'])assert.equal((await send('/apps/grupos/'+file)).status,200,file);
   assert.equal((await send('/apps/grupos/style.css')).status,200);
 
   await login(env.ADMIN_EMAIL,'grupos-test-password');
   assert.equal((await send('/apps/grupos')).headers.get('location'),'/apps/grupos/');
   const page=await (await send('/apps/grupos/')).text();
-  assert.match(page,/Todas as aplicações/);assert.match(page,/Adicionar número/);
+  assert.match(page,/Todas as aplicações/);assert.match(page,/href="\/apps\/grupos\/numeros"/);assert.doesNotMatch(page,/Adicionar número|id="accounts"/,'number management left the groups screen');
   assert.match(await (await send('/')).text(),/href="\/apps\/grupos\/"/);
   assert.equal((await send('/apps/criativos/')).status,200,'studio untouched');
   assert.equal((await send('/apps/financas/')).status,200,'finance untouched');
@@ -115,6 +116,10 @@ test('WhatsApp groups app: shared login, admin-only, private files hidden, sever
   const groupPage=await send('/apps/grupos/grupo?account=1&id=x');
   assert.equal(groupPage.status,200);assert.match(await groupPage.text(),/ANÁLISE DO GRUPO/);
   assert.equal((await send('/apps/grupos/grupo','POST')).status,405);
+  const numbersPage=await send('/apps/grupos/numeros');
+  assert.equal(numbersPage.status,200);const numbersHtml=await numbersPage.text();
+  assert.match(numbersHtml,/Adicionar número/);assert.match(numbersHtml,/aria-current="page"><svg[^>]*>.*?<span>Números conectados/s);
+  assert.equal((await send('/apps/grupos/numeros','POST')).status,405);
 
   // números: criar, validar, renomear
   assert.deepEqual((await json(A+'accounts')).accounts,[]);

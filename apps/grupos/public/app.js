@@ -1,7 +1,9 @@
 import {requireAccess} from '/access.js';
-import {$, h, signed, tone, number, message, api, post, prefs, setupSession} from '/apps/grupos/common.js';
+import {$, h, signed, tone, number, message, api, prefs, setupSession} from '/apps/grupos/common.js';
 
-let accountFilter = prefs.get('account', 'all'), adminFilter = prefs.get('admin', 'all'), pollTimer = null, loadToken = 0, known = [], current = null;
+// Um link vindo de "Números conectados" (?account=2) abre a lista já filtrada por aquele número.
+const fromLink = new URLSearchParams(location.search).get('account');
+let accountFilter = /^\d{1,9}$/.test(fromLink || '') ? fromLink : prefs.get('account', 'all'), adminFilter = prefs.get('admin', 'all'), loadToken = 0, current = null;
 // Ordenação da tabela (só neste navegador): coluna + sentido.
 const SORTS = {name: g => g.name, account: g => g.accountName, size: g => g.size ?? -1, joinedToday: g => g.joinedToday, leftToday: g => g.leftToday,
   week: g => g.joinedWeek - g.leftWeek, period: g => g.joinedPeriod - g.leftPeriod};
@@ -23,71 +25,17 @@ const whenLabel = data => data.isToday ? 'hoje' : data.date === shiftDay(todaySP
 // Pesquisa sem diferenciar maiúsculas nem acentos.
 const plain = text => String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
-// ---------- Números conectados ----------
-function accountCard(a) {
-  const when = a.lastSync ? new Date(a.lastSync * 1000).toLocaleString('pt-BR') : '—';
-  const buttons = [];
-  const rename = h('button', {type: 'button', class: 'ghost'}, 'Renomear');
-  rename.onclick = async () => {
-    const name = prompt('Novo nome do número:', a.name);
-    if (name && name.trim() && name.trim() !== a.name) await act(() => post(`accounts/${a.id}/rename`, {name}), 'Nome atualizado.');
-  };
-  const remove = h('button', {type: 'button', class: 'danger'}, 'Remover');
-  remove.onclick = async () => {
-    if (confirm(`Remover o número “${a.name}”? Ele será desconectado do WhatsApp e a sessão apagada. O histórico fica guardado.`))
-      await act(() => api(`accounts/${a.id}`, {method: 'DELETE'}), 'Número removido.');
-  };
-  let body;
-  if (!a.online) {
-    body = h('p', {class: 'st off'}, 'Coletor desligado');
-  } else if (a.state === 'qr') {
-    const img = h('img', {class: 'qr', width: '240', height: '240', alt: `QR Code para vincular ${a.name}`});
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(a.qrSvg || '');
-    body = h('div', {class: 'qr-wrap'}, img, h('div', {},
-      h('strong', {}, 'Vincule este número'),
-      h('ol', {}, h('li', {}, 'No celular, abra o WhatsApp deste número.'), h('li', {}, 'Configurações → Aparelhos conectados → Conectar um aparelho.'), h('li', {}, 'Aponte a câmera para o QR Code.')),
-      h('p', {class: 'subtle small'}, 'O código expira e é renovado automaticamente. Use de preferência um número dedicado.')));
-  } else if (a.state === 'open') {
-    const sync = h('button', {type: 'button'}, 'Sincronizar agora');
-    sync.onclick = () => act(() => post(`accounts/${a.id}/command`, {command: 'sync'}), 'Sincronização solicitada.', 6000);
-    const relink = h('button', {type: 'button', class: 'ghost'}, 'Desvincular');
-    relink.onclick = () => { if (confirm(`Desvincular “${a.name}”? Será preciso escanear um novo QR Code.`)) act(() => post(`accounts/${a.id}/command`, {command: 'relink'}), 'Desvinculando…', 6000); };
-    buttons.push(sync, relink);
-    body = h('p', {class: 'st on'}, `Conectado · ${a.phone || '—'} · ${number(a.groupsCount)} grupos · sincronizado ${when}`);
-  } else {
-    body = h('p', {class: 'st wait'}, 'Conectando ao WhatsApp…');
-  }
-  return h('article', {class: 'account-card'},
-    h('div', {class: 'account-head'}, h('strong', {}, a.name), h('span', {class: 'actions'}, ...buttons, rename, remove)),
-    body, a.online && a.error ? h('p', {class: 'warn'}, a.error) : null);
-}
-const fingerprint = list => JSON.stringify(list.map(a => [a.id, a.state, a.name, a.qrSvg?.length, a.groupsCount, a.lastSync, a.online, a.error]));
-function renderAccounts(data) {
-  known = data.accounts;
-  $('collector-off').hidden = data.collectorOnline;
-  $('add-account').disabled = data.accounts.length >= data.max;
-  const box = $('accounts');
-  box.replaceChildren();
-  if (!data.accounts.length) box.append(h('p', {class: 'empty'}, 'Nenhum número ainda. Clique em “Adicionar número” e escaneie o QR Code com o WhatsApp.'));
-  for (const a of data.accounts) box.append(accountCard(a));
-  const select = $('account-filter');
-  select.replaceChildren(h('option', {value: 'all'}, 'Todos os números'), ...data.accounts.map(a => h('option', {value: String(a.id)}, a.name)));
+// Opções do filtro "Número" e aviso de coletor desligado (o cadastro de números fica em /apps/grupos/numeros).
+let shownAccounts = '';
+function fillAccounts(data) {
+  $('collector-off').hidden = data.collectorOnline || !data.accounts.length;
+  const key = JSON.stringify(data.accounts.map(a => [a.id, a.name]));
   if (accountFilter !== 'all' && !data.accounts.some(a => String(a.id) === accountFilter)) accountFilter = 'all';
-  select.value = accountFilter;
-  clearTimeout(pollTimer);
-  const busy = !data.collectorOnline || data.accounts.some(a => a.state !== 'open');
-  pollTimer = setTimeout(refreshAccounts, busy ? 3000 : 30000);
-}
-async function refreshAccounts() {
-  try { renderAccounts(await api('accounts')); } catch (e) { message(e.message, true); }
-}
-async function act(call, text, reloadAfter = 0) {
-  try {
-    await call(); message(text);
-    await refreshAccounts();
-    await loadSummary();
-    if (reloadAfter) setTimeout(() => { refreshAccounts(); loadSummary().catch(() => {}); }, reloadAfter);
-  } catch (e) { message(e.message, true); }
+  if (key !== shownAccounts) {
+    shownAccounts = key;
+    $('account-filter').replaceChildren(h('option', {value: 'all'}, 'Todos os números'), ...data.accounts.map(a => h('option', {value: String(a.id)}, a.name)));
+  }
+  $('account-filter').value = accountFilter;
 }
 
 // ---------- Resumo ----------
@@ -96,7 +44,7 @@ async function loadSummary() {
   const token = ++loadToken;
   const data = await api(`summary?days=${$('days').value}&account=${accountFilter}&admin=${adminFilter}${dateQuery()}`);
   if (token !== loadToken) return;
-  if (fingerprint(known) !== fingerprint(data.accounts)) renderAccounts(data);
+  fillAccounts(data);
   const t = data.totals, when = whenLabel(data);
   for (const el of document.querySelectorAll('th .when')) el.textContent = when;
   const note = $('date-note');
@@ -107,7 +55,6 @@ async function loadSummary() {
     card(`Entraram ${when}`, number(t.joinedToday), 'pos'), card(`Saíram ${when}`, number(t.leftToday), 'neg'),
     card('Saldo 7 dias', signed(t.netWeek), tone(t.netWeek)));
   const multi = data.accounts.length > 1;
-  $('groups-table').classList.toggle('hide-account', !(multi && accountFilter === 'all'));
   $('dedupe-note').hidden = !(multi && data.groups.some(g => g.shared));
   current = data;
   renderGroups();
@@ -134,8 +81,9 @@ function renderGroups() {
   $('count').textContent = query ? `${number(rows.length)} de ${number(data.groups.length)} grupos` : data.groups.length ? `${number(data.groups.length)} grupos` : '';
   $('search-clear').hidden = !query;
   if (!rows.length) {
-    const text = query ? `Nenhum grupo encontrado para “${$('search').value.trim()}”.` : ADMIN_EMPTY[adminFilter] || (data.accounts.length ? 'Nenhum grupo ainda. Vincule o WhatsApp e aguarde a primeira sincronização.' : 'Adicione um número para começar.');
-    body.append(h('tr', {}, h('td', {colspan: '7', class: 'empty'}, text)));
+    const none = !data.accounts.length && !query;
+    const text = query ? `Nenhum grupo encontrado para “${$('search').value.trim()}”.` : ADMIN_EMPTY[adminFilter] || 'Nenhum grupo ainda. Vincule o WhatsApp e aguarde a primeira sincronização.';
+    body.append(h('tr', {}, h('td', {colspan: '7', class: 'empty'}, none ? ['Nenhum número conectado. ', h('a', {class: 'group-link', href: '/apps/grupos/numeros'}, 'Adicionar um número')] : text)));
     return;
   }
   for (const g of rows) {
@@ -188,11 +136,6 @@ if (account) {
   $('search').oninput = renderGroups;
   $('search').onkeydown = e => { if (e.key === 'Escape') { $('search').value = ''; renderGroups(); } };
   $('search-clear').onclick = () => { $('search').value = ''; renderGroups(); $('search').focus(); };
-  $('add-account').onclick = async () => {
-    const name = prompt('Nome do novo número (ex.: Promoções 1):');
-    if (name && name.trim()) await act(() => post('accounts', {name}), 'Número adicionado. Aguarde o QR Code aparecer.', 4000);
-  };
-  await refreshAccounts();
   reload();
   setInterval(() => loadSummary().catch(() => {}), 60000);
 }

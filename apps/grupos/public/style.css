@@ -85,3 +85,21 @@
 .grupos .notice{margin:10px 0 0;padding:10px 14px;border-radius:12px;background:#f3eefc;color:#4b2fa3;font-size:13px;line-height:1.5}
 .grupos .period input[type="date"]{font:inherit;padding:8px 12px;border:1px solid #e3dfeb;border-radius:10px;background:#fff;color:#252337}
 .grupos [hidden]{display:none!important}
+/* Layout com menu lateral (Grupos / Números conectados) */
+.grupos-shell{display:grid;grid-template-columns:240px minmax(0,1fr);max-width:1440px;margin:0 auto;min-height:calc(100vh - 88px)}
+.grupos-shell>main.grupos{max-width:1180px;width:100%;margin:0;padding:40px 36px 48px}
+.side{border-right:1px solid #eae7f0;background:#fff;padding:28px 16px}
+.side nav{position:sticky;top:24px;display:flex;flex-direction:column;gap:4px}
+.side-title{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#8a819d;padding:0 12px 10px}
+.side a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;color:#555267;font-size:14px;font-weight:500}
+.side a svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.side a:hover{background:#f7f5fb;color:#252337}
+.side a[aria-current="page"]{background:#f3eefc;color:#6a46c9;font-weight:600}
+@media (max-width:820px){
+ .grupos-shell{display:block;min-height:0}
+ .side{border-right:0;border-bottom:1px solid #eae7f0;padding:10px 12px}
+ .side nav{position:static;flex-direction:row;align-items:center;overflow-x:auto;gap:6px}
+ .side-title{display:none}
+ .side a{white-space:nowrap}
+ .grupos-shell>main.grupos{padding:24px 16px 36px}
+}
