@@ -12,11 +12,11 @@ export function placementTaxContext(days,date,host){
  return {tax_rate:base>0?tax/base:0};
 }
 
-// Keep subdomains and paths: reducing to registrable domains can merge distinct publishers.
+// Website placements are reported by registrable domain; raw source facts stay intact.
 export function placementKey(value,type=''){
  if(typeof value!=='string')return null;const raw=value.trim();if(!raw||/[{}\s]/.test(raw)||/^(other|unknown|--|\(not set\))$/i.test(raw))return null;
  if(type&&type!=='WEBSITE')return 'opaque:'+raw;
- try{const u=new URL(raw.includes('://')?raw:'https://'+raw);if(!['http:','https:'].includes(u.protocol)||u.username||u.password||!u.hostname.includes('.')||u.port)return null;return 'web:'+u.hostname.toLowerCase().replace(/^www\./,'')+(u.pathname==='/'?'':u.pathname.replace(/\/$/,''))+u.search;}catch{return raw.startsWith('mobileapp::')?'opaque:'+raw:null;}
+ try{const u=new URL(raw.includes('://')?raw:'https://'+raw);if(!['http:','https:'].includes(u.protocol)||u.username||u.password||!u.hostname.includes('.')||u.port)return null;const domain=site(u.hostname);return domain?'web:'+domain:null;}catch{return raw.startsWith('mobileapp::')?'opaque:'+raw:null;}
 }
 export function contentFacts(report,network){
  return revenueFacts(report,network,'utm_content').flatMap(r=>{const match=/^(\d{1,20})_(.*)$/.exec(r.utm);return match?[{...r,campaign:match[1],placement:match[2],placement_key:placementKey(match[2])}]:[];});
@@ -24,8 +24,9 @@ export function contentFacts(report,network){
 export function placementReport({account,campaign,start,end,ads=[],revenues=[],totals=[],rates={},complete=false,stale=false,collision=false,baseline=null}){
  ads=ads.filter(f=>f.account===account&&f.campaign===campaign&&f.date>=start&&f.date<=end);revenues=revenues.filter(f=>f.campaign===campaign&&f.date>=start&&f.date<=end);totals=totals.filter(f=>f.account===account&&f.campaign===campaign&&f.date>=start&&f.date<=end);
  const rows=new Map();const entry=(key,label,type='')=>{if(!rows.has(key))rows.set(key,{key,placement:label||'Não informado',type,ads:[],gam:[]});return rows.get(key);};
- for(const f of ads.filter(f=>f.account===account&&f.campaign===campaign&&f.date>=start&&f.date<=end))entry(f.placement_key||'ads:'+f.placement,f.placement,f.type).ads.push(f);
- for(const f of revenues.filter(f=>f.campaign===campaign&&f.date>=start&&f.date<=end))entry(f.placement_key||'gam:unknown',f.placement).gam.push(f);
+ // Recompute even for existing cached facts with legacy subdomain/path keys.
+ for(const f of ads){const key=placementKey(f.placement,f.type);entry(key||'ads:'+f.placement,key?.startsWith('web:')?key.slice(4):f.placement,f.type).ads.push(f);}
+ for(const f of revenues){const key=placementKey(f.placement);entry(key||'gam:unknown',key?.startsWith('web:')?key.slice(4):f.placement).gam.push(f);}
  const sum=(facts,field)=>{if(!facts.length)return null;let n=0;for(const f of facts){const value=toBRL(f[field],f.currency,f.date,rates);if(!Number.isFinite(value))return null;n+=value;}return n;};
  let revenueTotal=sum(revenues.filter(r=>r.campaign===campaign),'revenue'),overlap=baseline?.revenue!=null&&revenueTotal!=null&&revenueTotal>baseline.revenue+Math.max(.01,baseline.revenue*.01);
  const items=[...rows.values()].map(r=>{const cost=sum(r.ads,'cost'),gross_revenue=sum(r.gam,'revenue');let revenue=gross_revenue,deductions_pending=false,revenue_share=0,company_tax=0;const config=baseline?.deductions;if(config?.enabled&&gross_revenue!=null){revenue=0;for(const f of r.gam){const gross=toBRL(f.revenue,f.currency,f.date,rates),share=gross*shareRate(config,f.network),after=gross-share,context=placementTaxContext(baseline.deduction_days,f.date,f.site);const taxed=config.tax_enabled&&config.tax_percent>0;let taxRate=0;if(taxed&&config.tax_base==='revenue')taxRate=config.tax_percent/100;else if(taxed){if(context?.tax_rate==null)deductions_pending=true;else taxRate=context.tax_rate;}const tax=after*taxRate;revenue+=after-tax;revenue_share+=share;company_tax+=tax;}if(deductions_pending)revenue=null;}const timezone=r.ads.length&&r.gam.some(f=>r.ads.some(a=>a.timezone!==f.timezone));
