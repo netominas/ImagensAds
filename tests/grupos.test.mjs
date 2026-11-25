@@ -159,6 +159,21 @@ test('WhatsApp groups app: shared login, admin-only, private files hidden, sever
   assert.deepEqual(notMine.groups.map(g=>g.name),['A']);
   assert.equal((await json(A+'summary?days=7&admin=all')).groups.length,4);
   assert.equal((await send(A+'summary?admin=talvez')).status,400);
+  // dia de referência: ontem (entradas/saídas e tamanho ao fim do dia)
+  const yday=saoPauloDay(new Date(Date.now()-86400000));
+  const ev=storage.db.prepare("INSERT INTO wpp_events (account_id,group_id,member_id,phone,kind,detail,source,ts,day) VALUES (?,?,?,?,?,?,?,?,?)");
+  for(const [kind,m] of [['join','x1'],['join','x2'],['leave','x3']])ev.run(id1,'B@g.us',m,'5511900000000',kind,kind==='join'?'joined':'left','live',1,yday);
+  storage.db.prepare('INSERT INTO wpp_daily_size (account_id,group_id,day,size) VALUES (?,?,?,5)').run(id1,'B@g.us',yday);
+  const y=await json(A+`summary?days=7&account=${id1}&date=yesterday`);
+  assert.deepEqual([y.date,y.isToday],[yday,false]);
+  const yB=y.groups.find(g=>g.name==='B'),yA=y.groups.find(g=>g.name==='A');
+  assert.deepEqual([yB.size,yB.joinedToday,yB.leftToday,yB.joinedWeek,yB.leftWeek],[5,2,1,2,1]);
+  assert.deepEqual([yA.size,yA.joinedToday,yA.leftToday,yA.joinedWeek],[null,0,0,0],'today events and unknown size do not leak into yesterday');
+  assert.deepEqual([y.totals.members,y.totals.joinedToday,y.totals.leftToday,y.totals.netWeek],[5,2,1,1]);
+  assert.deepEqual((await json(A+`summary?days=7&account=${id1}&date=${yday}`)).groups,y.groups,'explicit date equals yesterday');
+  const nowRef=await json(A+`summary?days=7&account=${id1}`);
+  assert.equal(nowRef.isToday,true);assert.equal(nowRef.groups.find(g=>g.name==='B').size,1,'today uses the current size');
+  for(const bad of ['2999-01-01','2026-02-30','abc','2000-01-01','2026-1-1'])assert.equal((await send(A+'summary?date='+bad)).status,400,bad);
   const only2=await json(A+`summary?days=30&account=${id2}`);
   assert.equal(only2.groups.length,2);assert.equal(only2.totals.joinedToday,1);
   assert.equal((await send(A+'summary?account=abc')).status,400);
@@ -220,9 +235,9 @@ test('WhatsApp groups app: shared login, admin-only, private files hidden, sever
   await new Promise(r=>server.close(r));storage.close();
   const again=openStorage(dir,'b'.repeat(64));
   ensureSchema(again.db);
-  assert.equal(again.db.prepare('SELECT COUNT(*) n FROM wpp_events').get().n,4);
+  assert.equal(again.db.prepare('SELECT COUNT(*) n FROM wpp_events').get().n,7);
   assert.equal(again.db.prepare('SELECT COUNT(*) n FROM wpp_groups').get().n,4);
   assert.equal(again.db.prepare('SELECT COUNT(*) n FROM wpp_accounts').get().n,11);
   again.close();
- }finally{if(server.listening)await new Promise(r=>server.close(r));try{storage.close();}catch{}await rm(dir,{recursive:true,force:true});}
+ }finally{if(server.listening)await new Promise(r=>server.close(r));try{storage.close();}catch{}await rm(dir,{recursive:true,force:true}).catch(()=>{});}
 });

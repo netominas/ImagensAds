@@ -13,6 +13,9 @@ function lastDays(n,clock){
  for(let i=n-1;i>=0;i--)days.push(saoPauloDay(new Date(clock().getTime()-i*86400000)));
  return days;
 }
+// Soma dias a uma data AAAA-MM-DD (meio-dia UTC evita problemas de fuso/horário de verão).
+const addDays=(day,delta)=>new Date(Date.parse(day+'T12:00:00Z')+delta*86400000).toISOString().slice(0,10);
+const daysEnding=(end,n)=>Array.from({length:n},(_,i)=>addDays(end,i-(n-1)));
 function cleanName(value){
  const name=typeof value==='string'?value.replace(/\s+/g,' ').trim():'';
  if(!name||name.length>40||/[\u0000-\u001f]/.test(name))fail('Informe um nome de até 40 caracteres.');
@@ -64,8 +67,21 @@ export function createGruposAPI(storage,{clock=()=>new Date()}={}){
   return raw;
  }
 
- function summary(days,account,admin='all'){
-  const list=lastDays(days,clock),today=list[list.length-1],week=lastDays(7,clock)[0],from=list[0];
+ // Dia de referência do relatório (calendário America/Sao_Paulo). Sem o parâmetro, é hoje; aceita "ontem" e AAAA-MM-DD
+ // (até 365 dias atrás). "Hoje/Saldo 7 dias/Saldo no período" passam a terminar nesse dia.
+ function dateParam(url){
+  const today=saoPauloDay(clock()),raw=url.searchParams.get('date');
+  if(raw===null||raw===''||raw==='today')return today;
+  if(raw==='yesterday')return addDays(today,-1);
+  const t=/^\d{4}-\d{2}-\d{2}$/.test(raw)?Date.parse(raw+'T12:00:00Z'):NaN;
+  if(!Number.isFinite(t)||new Date(t).toISOString().slice(0,10)!==raw)fail('Data inválida (use AAAA-MM-DD).');
+  if(raw>today)fail('A data não pode estar no futuro.');
+  if(raw<addDays(today,-365))fail('Data muito antiga (máximo 365 dias atrás).');
+  return raw;
+ }
+
+ function summary(days,account,admin='all',ref=saoPauloDay(clock())){
+  const list=daysEnding(ref,days),today=ref,week=daysEnding(ref,7)[0],from=list[0],isToday=ref===saoPauloDay(clock());
   const rows0=db.prepare(`SELECT g.account_id,g.id,g.name,g.size,g.is_admin,a.name AS account_name
    FROM wpp_groups g JOIN wpp_accounts a ON a.id=g.account_id
    WHERE g.active=1 AND a.removed=0 ORDER BY g.size DESC,g.name`).all();
@@ -73,25 +89,30 @@ export function createGruposAPI(storage,{clock=()=>new Date()}={}){
     SUM(kind='join' AND day=?) AS joined_today, SUM(kind='leave' AND day=?) AS left_today,
     SUM(kind='join' AND day>=?) AS joined_week, SUM(kind='leave' AND day>=?) AS left_week,
     SUM(kind='join' AND day>=?) AS joined_period, SUM(kind='leave' AND day>=?) AS left_period
-    FROM wpp_events WHERE day>=? GROUP BY account_id,group_id`).all(today,today,week,week,from,from,from<week?from:week)
+    FROM wpp_events WHERE day>=? AND day<=? GROUP BY account_id,group_id`).all(today,today,week,week,from,from,from<week?from:week,ref)
     .map(r=>[r.account_id+'|'+r.group_id,r]));
+  // Em dias passados, "membros" é o tamanho ao fim daquele dia (último registro diário até lá); sem registro: null.
+  const past=isToday?null:new Map(db.prepare(`SELECT d.account_id,d.group_id,d.size FROM wpp_daily_size d
+   WHERE d.day=(SELECT MAX(day) FROM wpp_daily_size WHERE account_id=d.account_id AND group_id=d.group_id AND day<=?)`).all(ref)
+   .map(r=>[r.account_id+'|'+r.group_id,r.size]));
   const copies=new Map();
   for(const g of rows0)copies.set(g.id,(copies.get(g.id)||0)+1);
   const all=rows0.map(g=>{
    const s=sums.get(g.account_id+'|'+g.id)||{};
-   return {accountId:g.account_id,accountName:g.account_name,id:g.id,name:g.name,size:g.size,isAdmin:!!g.is_admin,
+   const size=isToday?g.size:(past.get(g.account_id+'|'+g.id)??null);
+   return {accountId:g.account_id,accountName:g.account_name,id:g.id,name:g.name,size,isAdmin:!!g.is_admin,
     shared:copies.get(g.id)>1,joinedToday:s.joined_today||0,leftToday:s.left_today||0,
     joinedWeek:s.joined_week||0,leftWeek:s.left_week||0,joinedPeriod:s.joined_period||0,leftPeriod:s.left_period||0};
   });
   const rows=all.filter(g=>(account===null||g.accountId===account)&&(admin==='all'||g.isAdmin===(admin==='yes')));
   // Totais não repetem um grupo que aparece em mais de um número: vale o registro de maior tamanho.
   const seen=new Set(),totals={groups:0,members:0,joinedToday:0,leftToday:0,netWeek:0,netPeriod:0};
-  for(const g of [...rows].sort((a,b)=>b.size-a.size)){
+  for(const g of [...rows].sort((a,b)=>(b.size??-1)-(a.size??-1))){
    if(seen.has(g.id))continue;seen.add(g.id);
-   totals.groups++;totals.members+=g.size;totals.joinedToday+=g.joinedToday;totals.leftToday+=g.leftToday;
+   totals.groups++;totals.members+=g.size??0;totals.joinedToday+=g.joinedToday;totals.leftToday+=g.leftToday;
    totals.netWeek+=g.joinedWeek-g.leftWeek;totals.netPeriod+=g.joinedPeriod-g.leftPeriod;
   }
-  return {days,account,admin,...accounts(),totals,groups:rows};
+  return {days,account,admin,date:ref,isToday,...accounts(),totals,groups:rows};
  }
 
  function detail(account,id,days){
@@ -153,7 +174,7 @@ export function createGruposAPI(storage,{clock=()=>new Date()}={}){
   const body=async()=>{try{return await request.json();}catch{return fail('Dados inválidos.');}};
   try{
    if(method==='GET'){
-    if(path==='/apps/grupos/api/summary')return authJSON(summary(daysParam(url),accountId(url.searchParams.get('account')??'all'),adminParam(url)));
+    if(path==='/apps/grupos/api/summary')return authJSON(summary(daysParam(url),accountId(url.searchParams.get('account')??'all'),adminParam(url),dateParam(url)));
     if(path==='/apps/grupos/api/group')return authJSON(detail(accountId(url.searchParams.get('account')),url.searchParams.get('id')||'',daysParam(url)));
     if(path==='/apps/grupos/api/accounts')return authJSON(accounts());
    }

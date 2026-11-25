@@ -3,11 +3,23 @@ import {$, h, signed, tone, number, message, api, post, prefs, setupSession} fro
 
 let accountFilter = prefs.get('account', 'all'), adminFilter = prefs.get('admin', 'all'), pollTimer = null, loadToken = 0, known = [], current = null;
 // Ordenação da tabela (só neste navegador): coluna + sentido.
-const SORTS = {name: g => g.name, account: g => g.accountName, size: g => g.size, joinedToday: g => g.joinedToday, leftToday: g => g.leftToday,
+const SORTS = {name: g => g.name, account: g => g.accountName, size: g => g.size ?? -1, joinedToday: g => g.joinedToday, leftToday: g => g.leftToday,
   week: g => g.joinedWeek - g.leftWeek, period: g => g.joinedPeriod - g.leftPeriod};
 let sortKey = prefs.get('sort', 'size'), sortDir = prefs.get('dir', 'desc');
 if (!(sortKey in SORTS)) sortKey = 'size';
 if (!['asc', 'desc'].includes(sortDir)) sortDir = 'desc';
+// Dia do relatório: hoje, ontem ou uma data escolhida (calendário de São Paulo, igual ao do servidor).
+let dayMode = prefs.get('daymode', 'today');
+if (!['today', 'yesterday'].includes(dayMode)) dayMode = 'today'; // a data avulsa não é lembrada
+const shiftDay = (day, delta) => new Date(Date.parse(day + 'T12:00:00Z') + delta * 86400000).toISOString().slice(0, 10);
+const todaySP = () => new Date().toLocaleDateString('en-CA', {timeZone: 'America/Sao_Paulo'});
+const dayText = day => day.split('-').reverse().join('/');
+const dateQuery = () => {
+  if (dayMode === 'yesterday') return '&date=yesterday';
+  const picked = $('day-date').value;
+  return dayMode === 'custom' && /^\d{4}-\d{2}-\d{2}$/.test(picked) ? `&date=${picked}` : '';
+};
+const whenLabel = data => data.isToday ? 'hoje' : data.date === shiftDay(todaySP(), -1) ? 'ontem' : 'em ' + dayText(data.date).slice(0, 5);
 // Pesquisa sem diferenciar maiúsculas nem acentos.
 const plain = text => String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
@@ -82,13 +94,17 @@ async function act(call, text, reloadAfter = 0) {
 const ADMIN_EMPTY = {yes: 'Nenhum grupo em que você seja administrador.', no: 'Nenhum grupo em que você não seja administrador.'};
 async function loadSummary() {
   const token = ++loadToken;
-  const data = await api(`summary?days=${$('days').value}&account=${accountFilter}&admin=${adminFilter}`);
+  const data = await api(`summary?days=${$('days').value}&account=${accountFilter}&admin=${adminFilter}${dateQuery()}`);
   if (token !== loadToken) return;
   if (fingerprint(known) !== fingerprint(data.accounts)) renderAccounts(data);
-  const t = data.totals;
+  const t = data.totals, when = whenLabel(data);
+  for (const el of document.querySelectorAll('th .when')) el.textContent = when;
+  const note = $('date-note');
+  note.hidden = data.isToday;
+  note.textContent = data.isToday ? '' : `Relatório de ${dayText(data.date)}. Entradas, saídas e saldos terminam nesse dia; “Membros” é o tamanho do grupo ao fim dele (— quando ainda não havia registro).`;
   $('cards').replaceChildren(
-    card('Grupos', number(t.groups)), card('Membros (total)', number(t.members)),
-    card('Entraram hoje', number(t.joinedToday), 'pos'), card('Saíram hoje', number(t.leftToday), 'neg'),
+    card('Grupos', number(t.groups)), card(data.isToday ? 'Membros (total)' : 'Membros (fim do dia)', number(t.members)),
+    card(`Entraram ${when}`, number(t.joinedToday), 'pos'), card(`Saíram ${when}`, number(t.leftToday), 'neg'),
     card('Saldo 7 dias', signed(t.netWeek), tone(t.netWeek)));
   const multi = data.accounts.length > 1;
   $('groups-table').classList.toggle('hide-account', !(multi && accountFilter === 'all'));
@@ -129,7 +145,7 @@ function renderGroups() {
     const tr = h('tr', {},
       h('td', {}, h('a', {class: 'group-link', href}, g.name), g.isAdmin ? h('span', {class: 'tag admin'}, ' admin') : h('span', {class: 'tag'}, ' (não sou admin)'), g.shared ? h('span', {class: 'tag'}, ' (em mais de um número)') : null),
       h('td', {class: 'col-account'}, g.accountName),
-      h('td', {}, number(g.size)), h('td', {class: 'pos'}, number(g.joinedToday)), h('td', {class: 'neg'}, number(g.leftToday)),
+      h('td', {}, g.size == null ? '—' : number(g.size)), h('td', {class: 'pos'}, number(g.joinedToday)), h('td', {class: 'neg'}, number(g.leftToday)),
       h('td', {class: tone(week)}, signed(week)), h('td', {class: tone(period)}, signed(period)));
     tr.style.cursor = 'pointer';
     tr.onclick = e => { if (!e.target.closest('a')) location.href = href; };
@@ -146,6 +162,17 @@ if (account) {
   if (!['all', 'yes', 'no'].includes(adminFilter)) adminFilter = 'all';
   $('admin-filter').value = adminFilter;
   const reload = () => loadSummary().catch(e => message(e.message, true));
+  const pickable = $('day-date');
+  pickable.max = todaySP(); pickable.min = shiftDay(todaySP(), -365);
+  const showDay = () => { $('day-mode').value = dayMode; $('day-custom').hidden = dayMode !== 'custom'; };
+  showDay();
+  $('day-mode').onchange = () => {
+    dayMode = $('day-mode').value;
+    if (dayMode !== 'custom') prefs.set('daymode', dayMode);
+    else if (!pickable.value) pickable.value = shiftDay(todaySP(), -1); // começa em ontem; o usuário ajusta
+    showDay(); reload();
+  };
+  pickable.onchange = () => { if (pickable.value) reload(); };
   $('days').onchange = () => { prefs.set('days', $('days').value); reload(); };
   $('admin-filter').onchange = () => { adminFilter = $('admin-filter').value; prefs.set('admin', adminFilter); reload(); };
   $('account-filter').onchange = () => { accountFilter = $('account-filter').value; prefs.set('account', accountFilter); reload(); };
