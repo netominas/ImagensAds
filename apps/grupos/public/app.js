@@ -1,7 +1,15 @@
 import {requireAccess} from '/access.js';
 import {$, h, signed, tone, number, message, api, post, prefs, setupSession} from '/apps/grupos/common.js';
 
-let accountFilter = prefs.get('account', 'all'), adminFilter = prefs.get('admin', 'all'), pollTimer = null, loadToken = 0, known = [];
+let accountFilter = prefs.get('account', 'all'), adminFilter = prefs.get('admin', 'all'), pollTimer = null, loadToken = 0, known = [], current = null;
+// Ordenação da tabela (só neste navegador): coluna + sentido.
+const SORTS = {name: g => g.name, account: g => g.accountName, size: g => g.size, joinedToday: g => g.joinedToday, leftToday: g => g.leftToday,
+  week: g => g.joinedWeek - g.leftWeek, period: g => g.joinedPeriod - g.leftPeriod};
+let sortKey = prefs.get('sort', 'size'), sortDir = prefs.get('dir', 'desc');
+if (!(sortKey in SORTS)) sortKey = 'size';
+if (!['asc', 'desc'].includes(sortDir)) sortDir = 'desc';
+// Pesquisa sem diferenciar maiúsculas nem acentos.
+const plain = text => String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
 // ---------- Números conectados ----------
 function accountCard(a) {
@@ -85,14 +93,36 @@ async function loadSummary() {
   const multi = data.accounts.length > 1;
   $('groups-table').classList.toggle('hide-account', !(multi && accountFilter === 'all'));
   $('dedupe-note').hidden = !(multi && data.groups.some(g => g.shared));
+  current = data;
+  renderGroups();
+}
+
+function renderGroups() {
+  const data = current;
+  if (!data) return;
   const body = $('groups');
   body.replaceChildren();
-  if (!data.groups.length) {
-    const text = ADMIN_EMPTY[adminFilter] || (data.accounts.length ? 'Nenhum grupo ainda. Vincule o WhatsApp e aguarde a primeira sincronização.' : 'Adicione um número para começar.');
+  const query = plain($('search').value);
+  const rows = query ? data.groups.filter(g => plain(g.name).includes(query)) : [...data.groups];
+  const pick = SORTS[sortKey], dir = sortDir === 'asc' ? 1 : -1;
+  rows.sort((x, y) => {
+    const a = pick(x), b = pick(y);
+    const c = typeof a === 'string' ? a.localeCompare(b, 'pt-BR', {sensitivity: 'base', numeric: true}) : a - b;
+    return c * dir || x.name.localeCompare(y.name, 'pt-BR', {sensitivity: 'base'}) || x.accountId - y.accountId;
+  });
+  for (const th of document.querySelectorAll('th[data-sort]')) {
+    const on = th.dataset.sort === sortKey;
+    th.setAttribute('aria-sort', on ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none');
+    th.querySelector('.arrow').textContent = on ? (sortDir === 'asc' ? '▲' : '▼') : '';
+  }
+  $('count').textContent = query ? `${number(rows.length)} de ${number(data.groups.length)} grupos` : data.groups.length ? `${number(data.groups.length)} grupos` : '';
+  $('search-clear').hidden = !query;
+  if (!rows.length) {
+    const text = query ? `Nenhum grupo encontrado para “${$('search').value.trim()}”.` : ADMIN_EMPTY[adminFilter] || (data.accounts.length ? 'Nenhum grupo ainda. Vincule o WhatsApp e aguarde a primeira sincronização.' : 'Adicione um número para começar.');
     body.append(h('tr', {}, h('td', {colspan: '7', class: 'empty'}, text)));
     return;
   }
-  for (const g of data.groups) {
+  for (const g of rows) {
     const week = g.joinedWeek - g.leftWeek, period = g.joinedPeriod - g.leftPeriod;
     // Cada grupo abre numa página própria (link de verdade: funciona com clique do meio e "abrir em nova aba").
     const href = `/apps/grupos/grupo?account=${g.accountId}&id=${encodeURIComponent(g.id)}&days=${$('days').value}`;
@@ -119,6 +149,18 @@ if (account) {
   $('days').onchange = () => { prefs.set('days', $('days').value); reload(); };
   $('admin-filter').onchange = () => { adminFilter = $('admin-filter').value; prefs.set('admin', adminFilter); reload(); };
   $('account-filter').onchange = () => { accountFilter = $('account-filter').value; prefs.set('account', accountFilter); reload(); };
+  for (const th of document.querySelectorAll('th[data-sort]')) {
+    th.querySelector('button').onclick = () => {
+      const key = th.dataset.sort;
+      // primeira vez numa coluna: nomes de A a Z, números do maior para o menor; clicar de novo inverte
+      if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc'; else { sortKey = key; sortDir = key === 'name' || key === 'account' ? 'asc' : 'desc'; }
+      prefs.set('sort', sortKey); prefs.set('dir', sortDir);
+      renderGroups();
+    };
+  }
+  $('search').oninput = renderGroups;
+  $('search').onkeydown = e => { if (e.key === 'Escape') { $('search').value = ''; renderGroups(); } };
+  $('search-clear').onclick = () => { $('search').value = ''; renderGroups(); $('search').focus(); };
   $('add-account').onclick = async () => {
     const name = prompt('Nome do novo número (ex.: Promoções 1):');
     if (name && name.trim()) await act(() => post('accounts', {name}), 'Número adicionado. Aguarde o QR Code aparecer.', 4000);

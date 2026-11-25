@@ -19,10 +19,11 @@
 <section id="cards" class="cards" aria-label="Resumo"></section>
 <p id="dedupe-note" class="subtle small" hidden>Os totais não repetem um grupo que aparece em mais de um número.</p>
 
+<div class="toolbar"><label class="search"><span class="visually-hidden">Pesquisar grupo</span><input id="search" type="search" placeholder="Pesquisar grupo pelo nome…" autocomplete="off" maxlength="80"><button id="search-clear" type="button" class="ghost" hidden>Limpar</button></label><span id="count" class="subtle small" aria-live="polite"></span></div>
 <div class="table-wrap"><table id="groups-table">
-<thead><tr><th>Grupo</th><th class="col-account">Número</th><th>Membros</th><th>Entraram hoje</th><th>Saíram hoje</th><th>Saldo 7 dias</th><th>Saldo no período</th></tr></thead>
+<thead><tr><th data-sort="name" aria-sort="none"><button type="button" class="sort">Grupo <span class="arrow" aria-hidden="true"></span></button></th><th class="col-account" data-sort="account" aria-sort="none"><button type="button" class="sort">Número <span class="arrow" aria-hidden="true"></span></button></th><th data-sort="size" aria-sort="none"><button type="button" class="sort">Membros <span class="arrow" aria-hidden="true"></span></button></th><th data-sort="joinedToday" aria-sort="none"><button type="button" class="sort">Entraram hoje <span class="arrow" aria-hidden="true"></span></button></th><th data-sort="leftToday" aria-sort="none"><button type="button" class="sort">Saíram hoje <span class="arrow" aria-hidden="true"></span></button></th><th data-sort="week" aria-sort="none"><button type="button" class="sort">Saldo 7 dias <span class="arrow" aria-hidden="true"></span></button></th><th data-sort="period" aria-sort="none"><button type="button" class="sort">Saldo no período <span class="arrow" aria-hidden="true"></span></button></th></tr></thead>
 <tbody id="groups"></tbody></table></div>
-<p class="subtle small">Clique em um grupo para abrir a página de análise dele.</p>
+<p class="subtle small">Clique no título de uma coluna para ordenar (clique de novo para inverter) e em um grupo para abrir a análise dele.</p>
 </main>
 </body>
 </html>
