@@ -60,7 +60,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
         const roiFile=originalPath.startsWith('/apps/roi/')&&!originalPath.startsWith('/apps/roi/private/')&&!originalPath.startsWith('/apps/roi/api/');
         if(!publicReader.has(originalPath)&&!roiPage&&!roiFile&&!originalPath.startsWith('/apps/roi/api/'))return send(authJSON({error:'Acesso não permitido.'},403));
         if(roiPage&&url.searchParams.has('campaign')&&!canCampaign(session,url.searchParams.get('account'),url.searchParams.get('campaign')))return send(authJSON({error:'Campanha não autorizada.'},403));
-        if(['/apps/roi/vinculos','/apps/roi/redes','/apps/roi/pagamentos'].includes(originalPath))return send(authJSON({error:'Acesso não permitido.'},403));
+        if(['/apps/roi/vinculos','/apps/roi/redes','/apps/roi/pagamentos','/apps/roi/configuracoes'].includes(originalPath))return send(authJSON({error:'Acesso não permitido.'},403));
       }
       if(['/apps/financas','/apps/financas/'].includes(originalPath)){
         if(!session)return send(redirect('/login'));
@@ -102,7 +102,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
         if(!['GET','HEAD'].includes(req.method))return send(authJSON({error:'Método não permitido.'},405));
         return send(new Response(await readFile(new URL({ '/apps/roi/automacoes':'./apps/roi/private/automations.html', '/apps/roi/push':'./apps/roi/private/push.html', '/apps/roi/whatsapp':'./apps/roi/private/whatsapp.html', '/apps/roi/script':'./apps/roi/private/script-report.html' }[originalPath],import.meta.url)),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store','Vary':'Cookie'}}));
       }
-      if(['/apps/roi','/apps/roi/','/apps/roi/sites','/apps/roi/vinculos','/apps/roi/redes','/apps/roi/pagamentos'].includes(originalPath)){
+      if(['/apps/roi','/apps/roi/','/apps/roi/sites','/apps/roi/vinculos','/apps/roi/redes','/apps/roi/pagamentos','/apps/roi/configuracoes'].includes(originalPath)){
         const denied=await requireSession(new Request(url,{headers:req.headers}),authStore,env);if(denied)return send(redirect('/login'));
         if(!['GET','HEAD'].includes(req.method))return send(authJSON({error:'Método não permitido.'},405));
         if(originalPath==='/apps/roi')return send(redirect('/apps/roi/'));

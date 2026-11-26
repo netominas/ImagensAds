@@ -148,3 +148,5 @@ body.sidebar-hidden{grid-template-columns:minmax(0,1fr)}.sidebar-toggle{display:
 .campaign-cpa-indicator{border:1px solid #80b5a7;border-radius:4px;background:#e9f7f1;color:#167754;font:700 8px/1.4 system-ui,sans-serif;padding:2px;min-width:22px;min-height:20px;cursor:help}.campaign-cpa-indicator:focus-visible{outline:2px solid #286bd5;outline-offset:2px}
 
 .campaign-cpa-value{display:inline-flex;align-items:center;vertical-align:middle;margin-left:8px;padding:3px 7px;border:1px solid #ceddeb;border-radius:6px;background:#f3f7fc;color:#245f9e;font-size:11px;font-weight:600;line-height:1.4;white-space:nowrap;box-shadow:0 1px 2px #0b2e5710;cursor:help}.campaign-cpa-value:focus-visible{outline:2px solid #286bd5;outline-offset:2px}
+
+.settings-panel{background:#fff;border:1px solid var(--line);border-radius:8px;padding:20px;color:#173e68}.settings-panel h2{margin:0 0 10px;font-size:19px}.settings-panel>p{font-size:13px;line-height:1.7;color:#607b94}.settings-links{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}.settings-panel #settings-message{color:#245f9e}.readonly .settings-nav{display:none!important}

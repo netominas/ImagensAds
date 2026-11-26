@@ -38,7 +38,7 @@ test('users persist, isolate ROI including totals and exports, revoke sessions a
  try{
   assert.equal((await request('/usuarios')).status,303);assert.equal((await request('/api/users')).status,401);
   assert.equal((await signIn(env.ADMIN_EMAIL,'admin-users-test-password')).status,200);const adminCookie=cookie;
-  assert.equal((await request('/usuarios')).status,200);
+  assert.equal((await request('/usuarios')).status,200);assert.equal((await request('/apps/roi/configuracoes')).status,200);
   const financeInput={name:'Finance viewer',email:'finance@example.test',password:'finance-users-test-password',active:true,grants:[],role:'finance-reader'};
   const financeCreated=await request('/api/users',financeInput);assert.equal(financeCreated.status,200);
   const financeLogin=await signIn(financeInput.email,financeInput.password);
@@ -56,7 +56,7 @@ test('users persist, isolate ROI including totals and exports, revoke sessions a
   const readerLogin=await signIn(input.email,input.password);assert.equal((await readerLogin.json()).home,'/apps/roi/');const readerCookie=cookie;
   assert.equal((await request('/')).headers.get('location'),'/apps/roi/');assert.equal((await request('/apps/roi/?account='+account+'&campaign=11')).status,200);
   assert.equal((await request('/apps/roi/?account='+account+'&campaign=13')).status,403);
-  for(const path of ['/usuarios','/api/users','/api/users/catalog','/api/users/campaigns?account='+account,'/apps/criativos/','/apps/google-ads/','/apps/google-ads/criar','/apps/roi/pagamentos','/apps/roi/redes','/apps/roi/vinculos','/api/data/settings','/apps/criativos/api/data/keys','/.netlify/functions/job?token=x'])assert.equal((await request(path)).status,403,path);
+  for(const path of ['/usuarios','/api/users','/api/users/catalog','/api/users/campaigns?account='+account,'/apps/criativos/','/apps/google-ads/','/apps/google-ads/criar','/apps/roi/configuracoes','/apps/roi/pagamentos','/apps/roi/redes','/apps/roi/vinculos','/api/data/settings','/apps/criativos/api/data/keys','/.netlify/functions/job?token=x'])assert.equal((await request(path)).status,403,path);
   const catalog=await (await request('/apps/roi/api/catalog')).json();assert.deepEqual(catalog.accounts.map(a=>a.id),[account]);assert.deepEqual(catalog.networks,[]);assert.deepEqual(catalog.links,[]);
   const reportPath=`/apps/roi/api/report?start=${date}&end=${date}&accounts=${account}&networks=`;
   const report=await(await request(reportPath)).json(),serialized=JSON.stringify(report);
