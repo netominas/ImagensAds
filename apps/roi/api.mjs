@@ -130,7 +130,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
    const rows=campaignRows(result,{account,campaign,site});
    const [day]=dailyReport(rows,result.rates,date,date);
    if(day)found=true;
-   days.push({date,cost:day?.cost??null,revenue:day?.revenue??null,profit:day?.profit??null,roi:day?.roi??null});
+   days.push({date,cost:day?.cost??null,revenue:day?.revenue??null,profit:day?.profit??null,roi:day?.roi??null,conversion_rate:day?.conversion_rate??null,cost_per_conversion:day?.cost_per_conversion??null});
   }
   return {start,end,days:found?days:[]};
  }

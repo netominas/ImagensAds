@@ -5,7 +5,7 @@ export function campaignQuickROI({api,money,pct,onOpen}){
  card.setAttribute('popover','manual');
  card.setAttribute('role','dialog');
  card.setAttribute('aria-labelledby','campaign-quick-roi-title');
- card.innerHTML='<div class="recent-changes-heading"><h2 id="campaign-quick-roi-title">ROI dos últimos 7 dias</h2><button type="button" aria-label="Fechar prévia de ROI">×</button></div><p class="recent-changes-name"></p><p class="quick-roi-message" role="status"></p><div class="quick-roi-table" hidden><table aria-label="ROI diário da campanha"><thead><tr><th scope="col" aria-sort="ascending">Data ↑</th><th scope="col">Custo</th><th scope="col">Receita</th><th scope="col">Lucro</th><th scope="col">ROI %</th></tr></thead><tbody></tbody></table></div>';
+ card.innerHTML='<div class="recent-changes-heading"><h2 id="campaign-quick-roi-title">ROI dos últimos 7 dias</h2><button type="button" aria-label="Fechar prévia de ROI">×</button></div><p class="recent-changes-name"></p><p class="quick-roi-message" role="status"></p><div class="quick-roi-table" hidden><table aria-label="ROI diário da campanha"><thead><tr><th scope="col" aria-sort="ascending">Data ↑</th><th scope="col">Custo</th><th scope="col">Receita</th><th scope="col">Lucro</th><th scope="col">ROI %</th><th scope="col" title="Taxa de conversão Google Ads">Conversão</th><th scope="col" title="Custo por conversão Google Ads">Custo/Conv</th></tr></thead><tbody></tbody></table></div>';
  document.body.append(card);
  const name=card.querySelector('.recent-changes-name'),message=card.querySelector('.quick-roi-message'),table=card.querySelector('.quick-roi-table'),body=card.querySelector('tbody');
  let trigger=null,pinned=false,closeTimer,restoreFocus=false,version=0;
@@ -48,7 +48,7 @@ export function campaignQuickROI({api,money,pct,onOpen}){
    days.sort((a,b)=>a.date.localeCompare(b.date));
    for(const day of days){
     const row=body.insertRow();
-    for(const [key,value] of Object.entries({date:day.date.split('-').reverse().slice(0,2).join('/'),cost:money(day.cost),revenue:money(day.revenue),profit:money(day.profit),roi:pct(day.roi)})){
+    for(const [key,value] of Object.entries({date:day.date.split('-').reverse().slice(0,2).join('/'),cost:money(day.cost),revenue:money(day.revenue),profit:money(day.profit),roi:pct(day.roi),conversion_rate:pct(day.conversion_rate),cost_per_conversion:money(day.cost_per_conversion)})){
      const cell=row.insertCell();
      cell.textContent=value;
      if((key==='profit'||key==='roi')&&day[key]!=null)cell.className=day[key]<0?'negative':'positive';

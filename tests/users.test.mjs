@@ -27,7 +27,7 @@ test('users persist, isolate ROI including totals and exports, revoke sessions a
  const authStore=storage.store('auth'),server=createAppServer({env,storage,authStore,googleAds:google,roiOptions:{autoSync:false}}),warehouse=createROIWarehouse(storage.db);
  warehouse.putMeta('catalog',{accounts:[{id:account,name:'Conta permitida',status:'ENABLED'},{id:other,name:'SEGREDO-OUTRA-CONTA',status:'ENABLED'}],networks:[{id:'9',name:'SEGREDO-REDE'}],warnings:['SEGREDO-CATALOGO']});
  storage.db.prepare('INSERT INTO roi_settings VALUES (1,?)').run(JSON.stringify({accounts:[account,other],networks:['9']}));
- const cost=(account,campaign,name,utm,cost)=>({account,campaign,name,account_name:account===other?'SEGREDO-OUTRA-CONTA':'Conta permitida',site:'teste.com.br',utm,date,currency:'BRL',timezone:'America/Sao_Paulo',cost});
+ const cost=(account,campaign,name,utm,cost)=>({account,campaign,name,account_name:account===other?'SEGREDO-OUTRA-CONTA':'Conta permitida',site:'teste.com.br',utm,date,currency:'BRL',timezone:'America/Sao_Paulo',cost,...(campaign==='11'?{ads_metrics:{interactions:20,conversions:2,conversion_rate:.1,cost_per_conversion:5}}:{})});
  warehouse.saveSource('ads',account,date,date,[cost(account,'11','Campanha permitida','ok',10),cost(account,'12','Ambiguidade permitida','shared',5),cost(account,'13','SEGREDO-CAMPANHA','shared',50)]);
  warehouse.saveSource('ads',other,date,date,[cost(other,'99','SEGREDO-OUTRA-CONTA','other',1000)]);
  warehouse.saveSource('gam','9',date,date,[{network:'9',site:'teste.com.br',utm:'ok',date,currency:'BRL',timezone:'America/Sao_Paulo',revenue:20,impressions:100},{network:'9',site:'teste.com.br',utm:'shared',date,currency:'BRL',timezone:'America/Sao_Paulo',revenue:100,impressions:100},{network:'9',site:'teste.com.br',utm:'other',date,currency:'BRL',timezone:'America/Sao_Paulo',revenue:9999,impressions:100}]);
@@ -67,8 +67,8 @@ test('users persist, isolate ROI including totals and exports, revoke sessions a
   assert.equal((await request(quickPath+'13')).status,403);
   const quick=await (await request(quickPath+'11')).json();
   assert.equal(quick.days.length,7);
-  assert.deepEqual(quick.days.at(-1),{date,cost:10,revenue:20,profit:10,roi:1});
-  assert.ok(quick.days.slice(0,-1).every(day=>day.cost===null&&day.roi===null));
+  assert.deepEqual(quick.days.at(-1),{date,cost:10,revenue:20,profit:10,roi:1,conversion_rate:.1,cost_per_conversion:5});
+  assert.ok(quick.days.slice(0,-1).every(day=>day.cost===null&&day.roi===null&&day.conversion_rate===null&&day.cost_per_conversion===null));
   const budgets=await(await request('/apps/roi/api/campaign-budgets?accounts='+account)).json();assert.deepEqual(budgets.items,[]);
   for(const path of ['/apps/roi/api/run?id='+'a'.repeat(32),'/apps/roi/api/budget?account='+account+'&campaign=13','/apps/roi/api/budget-operation?id='+'a'.repeat(32),'/apps/roi/api/payments','/apps/roi/api/campaign-changes?account='+account+'&campaign=13'])assert.equal((await request(path)).status,403,path);
   for(const path of ['/apps/roi/api/budget-preview','/apps/roi/api/budget-apply','/apps/roi/api/campaign-changes','/apps/roi/api/sync','/apps/roi/api/ensure','/apps/roi/api/settings','/apps/roi/api/links','/apps/roi/api/payments/refresh','/apps/google-ads/api/drafts/new','/.netlify/functions/generate-background'])assert.equal((await request(path,{account,campaign:'11'})).status,403,path);
