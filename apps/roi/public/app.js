@@ -39,7 +39,7 @@ stickyReportHeader($('report-panel'));
 const paymentsUI=paymentPanel({api});
 const analysisPanel=campaignAnalysisPanel({api,readOnly});
 const placementsUI=placementsPanel({api,readOnly});
-const sourceChoices=Object.fromEntries(['accounts','networks'].map(id=>[id,sourceSelector({select:$(id),list:$(id+'-choices'),search:$(id+'-search'),count:$(id+'-count')})]));
+const sourceChoices=Object.fromEntries(['accounts','networks'].map(id=>[id,sourceSelector({select:$(id),list:$(id+'-choices'),search:$(id+'-search'),count:$(id+'-count'),activityFilter:id==='accounts'?$('accounts-activity-filter'):null,onVerify:id==='accounts'?verifyAccountActivity:null})]));
 const utilityView=()=>['networks','payments','settings'].includes(state.view);
 const recentUI=recentChanges({api});
 const quickROI=campaignQuickROI({api,money,pct,onOpen:()=>recentUI.close()});
@@ -359,7 +359,7 @@ function renderNetworks(){
 }
 $('networks-refresh').onclick=async()=>{const button=$('networks-refresh');button.disabled=true;$('networks-message').textContent='Consultando conexões no Ad Manager…';try{const data=await api('/networks/refresh',{}),selected={accounts:selectValues('accounts'),networks:selectValues('networks')};applyCatalog(data,selected);renderNetworks();$('networks-message').textContent=data.networks.length+' rede(s) identificada(s). A seleção das coletas foi preservada.';}catch(error){$('networks-message').textContent=error.message;}finally{button.disabled=false;}};
 $('networks-configure').onclick=()=>{if(!state.catalog)return;applyCatalog(state.catalog,state.catalog.settings);selectDatabase();navigate('/apps/roi/configuracoes');$('scope').open=true;$('scope').scrollIntoView({behavior:'smooth',block:'start'});};
-function render(){readView();renderDeductionNote();renderCampaignDetail();renderCampaignNav();paymentsUI.show(state.view==='payments');if(state.view==='payments'){quickROI.close();recentUI.close();notices();return;}if(state.view==='settings'){quickROI.close();recentUI.close();showReportNotices([]);return;}if(state.view==='networks'){quickROI.close();recentUI.close();renderNetworks();notices();return;}renderMetrics();renderTable();renderLinks();notices();}
+function render(){readView();renderDeductionNote();renderCampaignDetail();renderCampaignNav();paymentsUI.show(state.view==='payments');if(state.view==='payments'){quickROI.close();recentUI.close();notices();return;}if(state.view==='settings'){quickROI.close();recentUI.close();showReportNotices([]);void loadAccountActivity().catch(error=>{$('settings-message').textContent=error.message;});return;}if(state.view==='networks'){quickROI.close();recentUI.close();renderNetworks();notices();return;}renderMetrics();renderTable();renderLinks();notices();}
 function showRun(run,applyScope=false){
  state.run=run;state.archive=!run.database;$('history').value=state.archive?run.id:'database';const r=run.result;if(!r)return;
  if(applyScope){const same=$('start').value===run.start&&$('end').value===run.end;$('start').value=run.start;$('end').value=run.end;if(!same)$('period').value='custom';for(const field of ['accounts','networks'])for(const option of $(field).options)option.selected=run.config[field].includes(option.value);}
@@ -386,10 +386,21 @@ function applyCatalog(catalog,selected){
  state.catalog=catalog;selected=selected||catalog.settings||{accounts:catalog.accounts.filter(a=>a.status==='ENABLED').map(a=>a.id),networks:catalog.networks.map(n=>n.id)};
  $('accounts').innerHTML=catalog.accounts.map(a=>'<option value="'+a.id+'"'+(selected.accounts.includes(a.id)?' selected':'')+'>'+esc(a.name)+' · '+pretty(a.id)+(a.currency?' · '+esc(a.currency):'')+(a.status==='ENABLED'?'':' · '+esc(a.status))+'</option>').join('');
  $('networks').innerHTML=catalog.networks.map(n=>'<option value="'+n.id+'"'+(selected.networks.includes(n.id)?' selected':'')+'>'+esc(n.name)+' · '+n.id+(n.currency?' · '+esc(n.currency):'')+'</option>').join('');
- for(const id of ['accounts','networks'])sourceChoices[id].refresh(catalog[id]);
+ refreshSourceChoices();
  $('link-account').innerHTML=catalog.accounts.map(a=>'<option value="'+a.id+'">'+esc(a.name)+' · '+pretty(a.id)+'</option>').join('');$('link-network').innerHTML=catalog.networks.map(n=>'<option value="'+n.id+'">'+esc(n.name)+' · '+n.id+'</option>').join('');
  for(const [field,value]of [['link-account',previousLinks.account],['link-network',previousLinks.network]])if([...$(field).options].some(o=>o.value===value))$(field).value=value;
  $('gam-count').textContent=catalog.networks.length;renderNetworks();$('scope-label').textContent=catalog.accounts.length+' contas disponíveis · '+catalog.networks.length+' redes';$('workspace-summary').textContent=catalog.accounts.length+' contas Google Ads · '+catalog.networks.length+' redes Ad Manager';$('sync').disabled=state.busy;
+}
+function refreshSourceChoices(){if(!state.catalog)return;sourceChoices.accounts.refresh(state.catalog.accounts.map(item=>({...item,activity:state.accountActivity?.find(a=>a.account===item.id)})));sourceChoices.networks.refresh(state.catalog.networks);}
+let activityPending=null;
+async function loadAccountActivity(force=false){
+ if(state.activityLoaded&&!force)return;if(activityPending)return activityPending;
+ activityPending=(async()=>{const data=await api('/account-activity');state.accountActivity=data.items;state.activityLoaded=true;refreshSourceChoices();})();
+ try{await activityPending;}finally{activityPending=null;}
+}
+async function verifyAccountActivity(account){
+ try{await api('/account-activity/refresh',{account});await loadAccountActivity(true);$('settings-message').textContent='Estado das campanhas consultado. A seleção das fontes foi mantida.';}
+ catch(error){$('settings-message').textContent=error.message;throw error;}
 }
 function reportScope(){return {start:$('start').value,end:$('end').value,accounts:selectValues('accounts'),networks:selectValues('networks')};}
 function showAutomatic(status){state.automatic=status.automatic;const auto=status.automatic;$('auto-status').textContent=auto?.enabled?(status.running?'Atualização em segundo plano · consultas ao banco disponíveis':'Atualização automática · a cada hora'):'Consulta ao banco local';if(auto?.enabled&&auto.error&&!status.running)$('auto-status').textContent+=' · pendências até o próximo ciclo';}

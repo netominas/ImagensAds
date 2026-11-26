@@ -1,3 +1,4 @@
+import {createAccountActivity} from './account-activity.mjs';
 import {createPushReport} from './push.mjs';
 import {createWhatsAppReport} from './whatsapp.mjs';
 import {applyDeductions,createDeductionSettings} from './deductions.mjs';
@@ -43,6 +44,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
  const deductions=createDeductionSettings(db);
  const warehouse=createROIWarehouse(db),googleAdsLink=createGoogleAdsLinks(db,google),campaignChanges=createCampaignChanges(db);
  const automationDefaults={ads:autoSync,gam:autoSync,history:true,placements:false,analysis:true,script:true};
+ const accountActivity=createAccountActivity(db,{warehouse,catalog,google});
  const automations=()=>({...automationDefaults,...warehouse.meta('automation_settings')});
  const budgets=createBudgets(db,google,{accountFor:async account=>{if(typeof account!=='string'||!/^\d{10}$/.test(account))throw new AdsError('Conta inválida.',{status:400});const a=(await catalog()).accounts.find(a=>a.id===account);if(!a)throw new AdsError('Conta indisponível para este painel.',{status:403});return a;}});
  const links=()=>db.prepare('SELECT * FROM roi_links ORDER BY site,utm').all();
@@ -188,6 +190,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
    }
    if(user?.role==='reader')return await readOnly(request,user);
    if(method==='GET'){
+    if(path==='/account-activity'){if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);return authJSON(accountActivity.read((await catalog()).accounts));}
     if(path==='/push'){
      if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);
      return authJSON(push.report(Object.fromEntries(url.searchParams)));
@@ -229,6 +232,7 @@ export function createROIAPI(storage,{env=process.env,google=createGoogleAdsClie
    if(!['POST','DELETE'].includes(method))return authJSON({error:'Método não permitido.'},405);
    if(!request.headers.get('content-type')?.startsWith('application/json'))return authJSON({error:'Envie JSON.'},415);
    let body;try{body=await request.json();}catch{throw new AdsError('JSON inválido.',{status:400});}if(!body||typeof body!=='object'||Array.isArray(body))throw new AdsError('Dados inválidos.',{status:400});
+   if(path==='/account-activity/refresh'&&method==='POST'){if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);return authJSON(await accountActivity.refresh(body.account));}
    if(path==='/fx/refresh'&&method==='POST'){
     if(user?.role!=='admin')return authJSON({error:'Acesso exclusivo do administrador.'},403);
     const {start,end}=body;
