@@ -1,3 +1,4 @@
+import {sourceSelector} from './source-selector.js';
 import {cpaIndicator,latestCampaignBidding} from './campaign-bidding.js';
 import {campaignQuickROI} from './campaign-quick-roi.js';
 import {roiGridPanel} from './roi-grid.js';
@@ -38,6 +39,7 @@ stickyReportHeader($('report-panel'));
 const paymentsUI=paymentPanel({api});
 const analysisPanel=campaignAnalysisPanel({api,readOnly});
 const placementsUI=placementsPanel({api,readOnly});
+const sourceChoices=Object.fromEntries(['accounts','networks'].map(id=>[id,sourceSelector({select:$(id),list:$(id+'-choices'),search:$(id+'-search'),count:$(id+'-count')})]));
 const utilityView=()=>['networks','payments','settings'].includes(state.view);
 const recentUI=recentChanges({api});
 const quickROI=campaignQuickROI({api,money,pct,onOpen:()=>recentUI.close()});
@@ -384,6 +386,7 @@ function applyCatalog(catalog,selected){
  state.catalog=catalog;selected=selected||catalog.settings||{accounts:catalog.accounts.filter(a=>a.status==='ENABLED').map(a=>a.id),networks:catalog.networks.map(n=>n.id)};
  $('accounts').innerHTML=catalog.accounts.map(a=>'<option value="'+a.id+'"'+(selected.accounts.includes(a.id)?' selected':'')+'>'+esc(a.name)+' · '+pretty(a.id)+(a.currency?' · '+esc(a.currency):'')+(a.status==='ENABLED'?'':' · '+esc(a.status))+'</option>').join('');
  $('networks').innerHTML=catalog.networks.map(n=>'<option value="'+n.id+'"'+(selected.networks.includes(n.id)?' selected':'')+'>'+esc(n.name)+' · '+n.id+(n.currency?' · '+esc(n.currency):'')+'</option>').join('');
+ for(const id of ['accounts','networks'])sourceChoices[id].refresh(catalog[id]);
  $('link-account').innerHTML=catalog.accounts.map(a=>'<option value="'+a.id+'">'+esc(a.name)+' · '+pretty(a.id)+'</option>').join('');$('link-network').innerHTML=catalog.networks.map(n=>'<option value="'+n.id+'">'+esc(n.name)+' · '+n.id+'</option>').join('');
  for(const [field,value]of [['link-account',previousLinks.account],['link-network',previousLinks.network]])if([...$(field).options].some(o=>o.value===value))$(field).value=value;
  $('gam-count').textContent=catalog.networks.length;renderNetworks();$('scope-label').textContent=catalog.accounts.length+' contas disponíveis · '+catalog.networks.length+' redes';$('workspace-summary').textContent=catalog.accounts.length+' contas Google Ads · '+catalog.networks.length+' redes Ad Manager';$('sync').disabled=state.busy;
@@ -401,6 +404,7 @@ async function loadDatabase(){
 }
 function selectDatabase(){state.archive=false;$('history').value='database';const url=new URL(location.href);url.searchParams.delete('run');history.replaceState(null,'',url.pathname+url.search);}
 function queueReport(saveSources=false){
+ if(saveSources)$('settings-message').textContent='Salvando seleção…';
  clearTimeout(state.readTimer);state.readTimer=setTimeout(async()=>{selectDatabase();try{if(!readOnly&&saveSources){const saved=await api('/settings',{accounts:selectValues('accounts'),networks:selectValues('networks')});state.catalog.settings=saved.settings;renderNetworks();$('settings-message').textContent='Fontes salvas. A seleção será usada nas próximas coletas e em todos os relatórios.';}if(!utilityView())await loadDatabase();}catch(e){if(state.view==='settings')$('settings-message').textContent=e.message;else{state.messages=[e.message];notices();}}},250);
 }
 async function watch(id){
