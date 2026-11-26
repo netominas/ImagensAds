@@ -7,6 +7,37 @@ import {dailyReport,siteDailyReport} from '../apps/roi/public/campaign-report.js
 const day='2026-10-24',account='1234567890',network='1234',scope={start:day,end:day,accounts:[account],networks:[network]};
 const cost=(value=10)=>({date:day,account,campaign:'1',name:'Campaign',site:'exemplo.com.br',utm:'u',currency:'BRL',timezone:'America/Sao_Paulo',cost:value});
 const revenue=(value=15)=>({date:day,network,site:'exemplo.com.br',utm:'u',currency:'BRL',timezone:'America/Sao_Paulo',revenue:value,impressions:100});
+
+test('missing unrelated accounts preserve ID-attributed ROI while shared UTMs and missing GAM stay pending',()=>{
+ const db=new DatabaseSync(':memory:');try{
+  const store=createROIWarehouse(db),other='9876543210',range={...scope,accounts:[account,other]};
+  store.saveSource('ads',account,day,day,[{...cost(),utm:'1'}]);
+  store.saveSource('gam',network,day,day,[{...revenue(),utm:'1'}]);
+  let report=store.read(range);
+  assert.equal(report.partial,true);assert.equal(report.rows[0].profit,5);assert.equal(report.totals.profit,5);
+  assert.deepEqual(report.rows[0].missing_coverage_days,[]);
+  store.saveSource('gam',network,day,day,[revenue()]);
+  store.saveSource('ads',account,day,day,[cost()]);
+  assert.equal(store.read(range).rows[0].profit,null);
+  const rules=[{network,site:'exemplo.com.br',utm:'u',account,campaign:'1'}];
+  assert.equal(store.read(range,rules).rows[0].profit,5);
+  report=store.read({...range,networks:[network,'5678']},rules);
+  assert.equal(report.rows[0].profit,null);assert.deepEqual(report.rows[0].missing_revenue_days,[day]);
+ }finally{db.close();}
+});
+
+test('a missing day leaves the period pending without hiding fully collected daily ROI',()=>{
+ const db=new DatabaseSync(':memory:');try{
+  const store=createROIWarehouse(db),next='2026-10-25';
+  store.saveSource('ads',account,day,day,[cost()]);store.saveSource('gam',network,day,day,[revenue()]);
+  const report=store.read({...scope,end:next}),daily=dailyReport(report.rows,report.rates,day,next);
+  assert.equal(report.rows[0].profit,null);assert.equal(report.rows[0].coverage_only_pending,true);
+  assert.equal(daily[0].profit,5);assert.equal(daily[0].roi,.5);
+  assert.equal(daily[1].cost,null);assert.equal(daily[1].revenue,null);assert.equal(daily[1].profit,null);
+  const unsafe=structuredClone(report.rows);unsafe[0].ambiguous=true;unsafe[0].coverage_only_pending=false;
+  assert.equal(dailyReport(unsafe,report.rates,day,next)[0].profit,null);
+ }finally{db.close();}
+});
 test('daily storage is idempotent, replaces successful zero-activity days and validates batches atomically',()=>{
  const db=new DatabaseSync(':memory:');try{const store=createROIWarehouse(db);for(let i=0;i<2;i++){store.saveSource('ads',account,day,day,[cost()]);store.saveSource('gam',network,day,day,[revenue()]);}
  assert.equal(store.read(scope).totals.profit,5);assert.equal(db.prepare('SELECT count(*) AS n FROM roi_daily_facts').get().n,2);

@@ -11,7 +11,7 @@ export function siteDailyReport(result,site,start,end){
 }
 export function dailyReport(rows,rates={},start,end){
  if(!rows.length)return [];
- const days=new Map(),get=date=>{if(!days.has(date))days.set(date,{date,cost:0,revenue:0,comparable:rows.every(r=>r.comparable),missingCost:false,missingRevenue:false});return days.get(date);};
+ const days=new Map(),get=date=>{if(!days.has(date))days.set(date,{date,cost:0,revenue:0,comparable:rows.every(r=>r.comparable||r.coverage_only_pending&&!r.deductions_pending),missingCost:false,missingRevenue:false});return days.get(date);};
  // Only fill dates when the report has campaign data.
  if(/^\d{4}-\d{2}-\d{2}$/.test(start||'')&&/^\d{4}-\d{2}-\d{2}$/.test(end||'')){
   const date=new Date(start+'T00:00:00Z');for(let n=0;n<93&&date.toISOString().slice(0,10)<=end;n++,date.setUTCDate(date.getUTCDate()+1))get(date.toISOString().slice(0,10));
@@ -25,6 +25,7 @@ export function dailyReport(rows,rates={},start,end){
  return [...days.values()].sort((a,b)=>a.date.localeCompare(b.date)).map(day=>{
   if(rows.some(r=>r.missing_cost_days?.includes(day.date)))day.missingCost=true;
   if(rows.some(r=>r.missing_revenue_days?.includes(day.date)))day.missingRevenue=true;
+  if(rows.some(r=>r.missing_coverage_days?.includes(day.date)))day.comparable=false;
   const cost=day.missingCost?null:day.cost,revenue=day.missingRevenue||rows.some(r=>r.revenue==null)?null:day.revenue,comparable=day.comparable&&cost!=null&&revenue!=null,profit=comparable?revenue-cost:null;
   const gam_original=rows.flatMap(r=>r.gam_original||[]).filter(f=>f.date===day.date);
   const ads_original=rows.every(r=>Array.isArray(r.ads_original))?rows.flatMap(r=>r.ads_original).filter(f=>f.date===day.date):null;

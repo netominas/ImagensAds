@@ -92,8 +92,17 @@ export function createROIWarehouse(db,{now=()=>new Date().toISOString()}={}){
   const missingFxDays=usdDays.filter(day=>!rates[day]),cachedFxDays=usdDays.filter(day=>rates[day]?.cached);
   if(missingFxDays.length)warnings.push('Falta cotação PTAX para '+missingFxDays.length+' dia(s) com dados em dólar. Os valores em reais seguem disponíveis.');
   if(cachedFxDays.length)warnings.push('Conversão provisória em '+cachedFxDays.length+' dia(s) com a última PTAX disponível no banco. Os valores serão recalculados quando a cotação for atualizada.');
-  if(missing)warnings.unshift(adsKind==='ads-script'?'O período ainda tem dias sem dados do Script ou do Ad Manager. Lucro e ROI aguardam cobertura completa.':'O período ainda não foi totalmente importado. Para importar o período, use Atualizar agora. Lucro e ROI aguardam cobertura completa.');
-  const result=reconcile(costs,revenues,rates,rules,{partial:missing>0});timestamps.sort();
+  if(missing)warnings.unshift(adsKind==='ads-script'?'O período ainda tem dias sem dados do Script ou do Ad Manager. Lucro e ROI ficam em aberto apenas nos registros sem cobertura suficiente.':'O período ainda não foi totalmente importado. Para importar o período, use Atualizar agora. Registros completos preservam lucro e ROI; pendências ficam sinalizadas.');
+  // Missing accounts must not suppress complete campaigns identified by their own ID.
+  // Custom/shared UTMs still require the full Ads scope to rule out another owner.
+  const gamMissing=[...new Set(scope.networks.flatMap(id=>missingBySource.get('gam:'+id)||[]))];
+  const coverageFor=row=>{
+   const pending=[...(missingBySource.get('ads:'+row.account)||[]),...gamMissing];
+   const explicit=row.gam_original.every(f=>f.utm===row.campaign||rules.some(rule=>rule.network===f.network&&rule.site===f.site&&rule.utm===f.utm&&rule.account===row.account&&rule.campaign===row.campaign));
+   if(!explicit)for(const id of scope.accounts)pending.push(...(missingBySource.get('ads:'+id)||[]));
+   return [...new Set(pending)].sort();
+  };
+  const result=reconcile(costs,revenues,rates,rules,{partial:missing>0,coverageFor});timestamps.sort();
   for(const row of result.rows){row.missing_cost_days=missingBySource.get('ads:'+row.account)||[];row.missing_revenue_days=[...new Set(scope.networks.flatMap(id=>missingBySource.get('gam:'+id)||[]))];}
   return {...result,warnings,sources,rates,missing_fx_days:missingFxDays,cached_fx_days:cachedFxDays,currency:'BRL',revenue_metric:'AD_EXCHANGE_LINE_ITEM_LEVEL_REVENUE',revenue_label:'Receita estimada Ad Exchange',start:scope.start,end:scope.end,updated_at:timestamps.at(-1)||null,oldest_collection:timestamps[0]||null,cost_records:costs.length,revenue_records:revenues.length,database:true,revision:revision(),data_coverage:{complete:missing===0,missing_days:missing,stale_days:stale},report_ids:[]};
  }
