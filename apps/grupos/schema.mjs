@@ -38,7 +38,12 @@ CREATE TABLE IF NOT EXISTS wpp_clusters (
  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS wpp_cluster_groups (
  group_id TEXT PRIMARY KEY, cluster_id INTEGER NOT NULL, added INTEGER NOT NULL);
-CREATE INDEX IF NOT EXISTS wpp_cluster_groups_cluster ON wpp_cluster_groups(cluster_id);`;
+CREATE INDEX IF NOT EXISTS wpp_cluster_groups_cluster ON wpp_cluster_groups(cluster_id);
+-- Campanhas do Meta ligadas a um agrupamento (várias campanhas podem apontar para o mesmo agrupamento).
+-- Campanha sem linha aqui = "sem agrupamento". O nome é guardado só para exibir quando a Meta estiver indisponível.
+CREATE TABLE IF NOT EXISTS wpp_campaign_links (
+ campaign_id TEXT PRIMARY KEY, cluster_id INTEGER NOT NULL, name TEXT NOT NULL DEFAULT '', updated INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS wpp_campaign_links_cluster ON wpp_campaign_links(cluster_id);`;
 
 const hasColumn = (db, table, column) => db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === column);
 const tableExists = (db, table) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table);

@@ -44,6 +44,13 @@ export const prefs = {
   set(key, value) { try { localStorage.setItem('grupos-' + key, value); } catch { /* ignora */ } },
 };
 
+// Valores em reais e razões (a conta de anúncios é em BRL) e rótulos de status das campanhas da Meta.
+export const money = n => Number(n ?? 0).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+export const ratio = n => Number(n).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '×';
+const STATUS = {ACTIVE: 'Ativa', PAUSED: 'Pausada', CAMPAIGN_PAUSED: 'Pausada', ADSET_PAUSED: 'Pausada', ARCHIVED: 'Arquivada', DELETED: 'Excluída', WITH_ISSUES: 'Com problemas',
+  IN_PROCESS: 'Em análise', PENDING_REVIEW: 'Em análise', DISAPPROVED: 'Reprovada', PENDING_BILLING_INFO: 'Pagamento pendente'};
+export const statusLabel = status => STATUS[status] || (status ? status.toLowerCase() : '—');
+
 export const card = (label, value, cls = '') => h('article', {class: 'card'}, h('span', {}, label), h('strong', {class: cls}, value));
 
 // Seletores "Dia" (hoje/ontem) e "Período" das páginas de agrupamentos; lembram a escolha neste navegador

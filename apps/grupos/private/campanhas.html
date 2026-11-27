@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Campanhas — AK Workspace</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/dashboard.css"><link rel="stylesheet" href="/apps/grupos/style.css"><script type="module" src="/apps/grupos/campanhas.js"></script></head>
+<body>
+<header class="header"><a class="brand" href="/"><img src="/favicon.svg" width="42" height="42" alt="AK"><span>AK <small>Workspace</small></span></a><div class="account"><a href="/">← Todas as aplicações</a><button id="logout" type="button">Sair ↗</button></div></header>
+<div class="grupos-shell">
+<aside class="side"><nav aria-label="Menu de Grupos de WhatsApp"><span class="side-title">Grupos de WhatsApp</span><a href="/apps/grupos/"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20M10 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM20 20v-1.5a3.5 3.5 0 0 0-2.5-3.35M15.5 4.65a3.5 3.5 0 0 1 0 6.7"/></svg><span>Grupos</span></a><a href="/apps/grupos/agrupamentos"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5ZM3 12.5l9 5 9-5M3 17l9 5 9-5"/></svg><span>Agrupamentos</span></a><a href="/apps/grupos/campanhas" aria-current="page"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M3 11v2a1 1 0 0 0 1 1h3l6 4V6L7 10H4a1 1 0 0 0-1 1ZM16.5 9a4 4 0 0 1 0 6"/></svg><span>Campanhas</span></a><a href="/apps/grupos/numeros"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg><span>Números conectados</span></a></nav></aside>
+<main class="grupos">
+<div class="heading"><div><span class="eyebrow">META ADS · SÓ LEITURA</span><h1>Campanhas</h1><p class="subtle">Ligue cada campanha ao agrupamento (nicho) que recebe os leads dela. Clique no nome da campanha para abrir o relatório: leads e gasto da Meta lado a lado com as entradas reais nos grupos.</p></div>
+<div class="filters"><label class="period">Dia<select id="day-mode"><option value="today">Hoje</option><option value="yesterday">Ontem</option></select></label>
+<label class="period">Período<select id="days"><option value="7">7 dias</option><option value="30" selected>30 dias</option><option value="90">90 dias</option></select></label></div></div>
+<p id="message" role="status" aria-live="polite"></p>
+<p id="meta-off" class="notice" hidden>A Meta ainda não está conectada neste servidor. É preciso guardar o token e a conta de anúncios no arquivo de configuração (veja o VPS.md, seção Campanhas).</p>
+<p id="unlinked" class="notice" hidden></p>
+<div class="toolbar"><label class="search"><span class="visually-hidden">Pesquisar campanha</span><input id="search" type="search" placeholder="Pesquisar campanha pelo nome…" autocomplete="off" maxlength="80"><button id="search-clear" type="button" class="ghost" hidden>Limpar</button></label>
+<label class="period">Mostrar<select id="status-filter"><option value="running">Ativas ou com gasto no período</option><option value="all">Todas</option></select></label>
+<label class="period">Agrupamento<select id="link-filter"><option value="all">Todas</option><option value="none">Sem agrupamento</option><option value="linked">Com agrupamento</option></select></label>
+<button id="refresh" type="button" class="ghost">Atualizar da Meta</button><span id="count" class="subtle small" aria-live="polite"></span></div>
+<div class="table-wrap"><table id="campaigns-table">
+<thead><tr><th data-sort="name" aria-sort="none"><button type="button" class="sort">Campanha <span class="arrow" aria-hidden="true"></span></button></th><th data-sort="status" aria-sort="none"><button type="button" class="sort">Status <span class="arrow" aria-hidden="true"></span></button></th><th data-sort="spendDay" aria-sort="none"><button type="button" class="sort">Gasto <span class="when">hoje</span> <span class="arrow" aria-hidden="true"></span></button></th><th data-sort="leadsDay" aria-sort="none"><button type="button" class="sort">Leads <span class="when">hoje</span> <span class="arrow" aria-hidden="true"></span></button></th><th data-sort="spend" aria-sort="none"><button type="button" class="sort">Gasto no período <span class="arrow" aria-hidden="true"></span></button></th><th data-sort="leads" aria-sort="none"><button type="button" class="sort">Leads no período <span class="arrow" aria-hidden="true"></span></button></th><th data-sort="cpl" aria-sort="none"><button type="button" class="sort">Custo por lead <span class="arrow" aria-hidden="true"></span></button></th><th data-sort="cluster" aria-sort="none"><button type="button" class="sort">Agrupamento <span class="arrow" aria-hidden="true"></span></button></th></tr></thead>
+<tbody id="campaigns"></tbody></table></div>
+<p class="subtle small">Leads são os eventos Lead do pixel (cliques no botão do WhatsApp), não as entradas reais. Os dados vêm da Meta (somente leitura) e ficam guardados por até 5 minutos. Esta tela nunca cria, pausa nem altera campanhas.</p>
+</main>
+</div>
+</body>
+</html>

@@ -15,7 +15,9 @@ async function load() {
   document.title = `${c.name} — AK Workspace`;
   $('title').textContent = c.name;
   $('eyebrow').textContent = `AGRUPAMENTO · ID ${c.id}`;
-  $('meta').textContent = 'Os grupos abaixo contam como este nicho. O ID acima será usado para vincular campanhas do Meta.';
+  $('meta').textContent = 'Os grupos abaixo contam como este nicho. As campanhas do Meta que enviam leads para eles são ligadas em Campanhas.';
+  $('campaigns-panel').hidden = !data.campaigns.length;
+  $('campaigns').replaceChildren(...data.campaigns.map(x => h('li', {}, h('a', {class: 'group-link', href: `/apps/grupos/campanha?id=${x.id}`}, x.name))));
   for (const el of document.querySelectorAll('th .when')) el.textContent = when;
   $('cards').replaceChildren(card('Grupos', number(t.groups)), card('Membros', number(t.members)),
     card(`Entraram ${when}`, number(t.joinedToday), 'pos'), card(`Saíram ${when}`, number(t.leftToday), 'neg'),

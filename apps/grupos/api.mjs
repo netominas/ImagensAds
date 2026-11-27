@@ -22,7 +22,7 @@ function cleanName(value){
  return name;
 }
 
-export function createGruposAPI(storage,{clock=()=>new Date()}={}){
+export function createGruposAPI(storage,{clock=()=>new Date(),meta=null}={}){
  const db=storage.db;
  ensureSchema(db);
  const nowSeconds=()=>Math.floor(clock().getTime()/1000);
@@ -168,7 +168,8 @@ export function createGruposAPI(storage,{clock=()=>new Date()}={}){
    if(c){c.accounts.push(g.accountName);c.size=Math.max(c.size??-1,g.size??-1);}
    else byId.set(g.id,{id:g.id,name:g.name,size:g.size,accounts:[g.accountName],clusterId:g.clusterId,clusterName:g.clusterName});
   }
-  return {cluster:{id:cluster.id,name:cluster.name,created:cluster.created},days,date:ref,isToday,totals:rollup(groups),groups,candidates:[...byId.values()]};
+  return {cluster:{id:cluster.id,name:cluster.name,created:cluster.created},days,date:ref,isToday,totals:rollup(groups),groups,candidates:[...byId.values()],
+   campaigns:db.prepare('SELECT campaign_id AS id,name FROM wpp_campaign_links WHERE cluster_id=? ORDER BY name COLLATE NOCASE').all(id)};
  }
  function createCluster(data){
   if(!data||typeof data!=='object')fail('Dados inválidos.');
@@ -188,6 +189,7 @@ export function createGruposAPI(storage,{clock=()=>new Date()}={}){
   db.exec('BEGIN IMMEDIATE');
   try{
    db.prepare('DELETE FROM wpp_cluster_groups WHERE cluster_id=?').run(id);
+   db.prepare('DELETE FROM wpp_campaign_links WHERE cluster_id=?').run(id);
    db.prepare('DELETE FROM wpp_clusters WHERE id=?').run(id);
    db.exec('COMMIT');
   }catch(error){db.exec('ROLLBACK');throw error;}
@@ -222,6 +224,104 @@ export function createGruposAPI(storage,{clock=()=>new Date()}={}){
    db.exec('COMMIT');
   }catch(error){db.exec('ROLLBACK');throw error;}
   return {ok:true,added,moved,removed};
+ }
+
+ // ---------- Campanhas do Meta (somente leitura) ----------
+ const campaignId=value=>{if(!/^\d{1,25}$/.test(String(value)))fail('Campanha inválida.');return String(value);};
+ const needMeta=()=>{if(!meta?.configured)fail('A Meta ainda não está configurada neste servidor.',409);};
+ const linkMap=()=>new Map(db.prepare('SELECT campaign_id,cluster_id,name FROM wpp_campaign_links').all().map(r=>[r.campaign_id,r]));
+ // Campanhas, e a linha diária de cada uma, no período que termina em `ref`.
+ async function metaData(days,ref,fresh){
+  const since=daysEnding(ref,days)[0];
+  const [campaigns,rows]=await Promise.all([meta.campaigns({fresh}),meta.insights(since,ref,{fresh})]);
+  return {campaigns,rows};
+ }
+ const cpl=(spend,leads)=>leads>0?spend/leads:null;
+ const money=n=>Math.round(n*100)/100;
+ async function campaignList(days,ref,fresh){
+  const clusters=db.prepare('SELECT id,name FROM wpp_clusters ORDER BY name COLLATE NOCASE,id').all();
+  const base={days,date:ref,isToday:ref===saoPauloDay(clock()),clusters};
+  if(!meta?.configured)return {...base,configured:false,campaigns:[]};
+  const {campaigns,rows}=await metaData(days,ref,fresh);
+  const links=linkMap(),nameOf=new Map(clusters.map(c=>[c.id,c.name]));
+  const by=new Map();
+  const entry=(id,name,status='')=>{if(!by.has(id))by.set(id,{id,name,status,spend:0,leads:0,spendDay:0,leadsDay:0});return by.get(id);};
+  for(const c of campaigns)entry(c.id,c.name,c.status);
+  for(const r of rows){
+   const e=entry(r.id,r.name);
+   e.spend+=r.spend;e.leads+=r.leads;
+   if(r.day===ref){e.spendDay+=r.spend;e.leadsDay+=r.leads;}
+  }
+  for(const [id,l] of links)entry(id,l.name||id);
+  const list=[...by.values()].map(e=>{
+   const l=links.get(e.id);
+   return {...e,spend:money(e.spend),spendDay:money(e.spendDay),cpl:cpl(e.spend,e.leads),
+    clusterId:l?l.cluster_id:null,clusterName:l?nameOf.get(l.cluster_id)??null:null};
+  });
+  return {...base,configured:true,campaigns:list};
+ }
+ // Liga a campanha a um agrupamento (ou solta, com cluster:null).
+ async function setCampaignCluster(id,data){
+  if(!data||typeof data!=='object')fail('Dados inválidos.');
+  if(data.cluster===null){db.prepare('DELETE FROM wpp_campaign_links WHERE campaign_id=?').run(id);return {ok:true};}
+  if(!Number.isInteger(data.cluster))fail('Agrupamento inválido.');
+  activeCluster(data.cluster);
+  needMeta();
+  const known=(await meta.campaigns()).find(c=>c.id===id);
+  if(!known)fail('Campanha não encontrada na conta da Meta.',404);
+  db.prepare('INSERT INTO wpp_campaign_links (campaign_id,cluster_id,name,updated) VALUES (?,?,?,?) ON CONFLICT(campaign_id) DO UPDATE SET cluster_id=excluded.cluster_id,name=excluded.name,updated=excluded.updated')
+   .run(id,data.cluster,known.name.slice(0,200),nowSeconds());
+  return {ok:true};
+ }
+ // Entradas e saídas por dia dos grupos de um agrupamento (um grupo em dois números conta uma vez, como nos totais).
+ function clusterMoves(clusterId,from,to){
+  const primary=new Map();
+  for(const g of db.prepare(`SELECT g.account_id,g.id FROM wpp_groups g JOIN wpp_accounts a ON a.id=g.account_id JOIN wpp_cluster_groups cg ON cg.group_id=g.id
+   WHERE cg.cluster_id=? AND g.active=1 AND a.removed=0 ORDER BY g.size DESC,g.account_id`).all(clusterId))if(!primary.has(g.id))primary.set(g.id,g.account_id);
+  const days=new Map();
+  for(const r of db.prepare(`SELECT e.account_id,e.group_id,e.day,SUM(e.kind='join') AS joined,SUM(e.kind='leave') AS left
+   FROM wpp_events e JOIN wpp_cluster_groups cg ON cg.group_id=e.group_id WHERE cg.cluster_id=? AND e.day>=? AND e.day<=?
+   GROUP BY e.account_id,e.group_id,e.day`).all(clusterId,from,to)){
+   if(primary.get(r.group_id)!==r.account_id)continue;
+   const d=days.get(r.day)||{joined:0,left:0};d.joined+=r.joined;d.left+=r.left;days.set(r.day,d);
+  }
+  return {days,groups:primary.size};
+ }
+ async function campaignReport(id,days,ref,fresh){
+  needMeta();
+  const {campaigns,rows}=await metaData(days,ref,fresh);
+  const links=linkMap(),link=links.get(id)||null;
+  const found=campaigns.find(c=>c.id===id),seen=rows.find(r=>r.id===id);
+  if(!found&&!seen&&!link)fail('Campanha não encontrada.',404);
+  const list=daysEnding(ref,days);
+  const cluster=link?db.prepare('SELECT id,name FROM wpp_clusters WHERE id=?').get(link.cluster_id)||null:null;
+  const mine=new Set([id]);
+  if(cluster)for(const [cid,l] of links)if(l.cluster_id===cluster.id)mine.add(cid);
+  const daily=new Map(list.map(day=>[day,{day,spend:0,leads:0,clusterSpend:0,clusterLeads:0,joined:0,left:0}]));
+  const perCampaign=new Map();
+  for(const r of rows){
+   const d=daily.get(r.day);
+   if(!d||!mine.has(r.id))continue;
+   d.clusterSpend+=r.spend;d.clusterLeads+=r.leads;
+   const p=perCampaign.get(r.id)||{id:r.id,name:r.name,spend:0,leads:0};p.spend+=r.spend;p.leads+=r.leads;perCampaign.set(r.id,p);
+   if(r.id===id){d.spend+=r.spend;d.leads+=r.leads;}
+  }
+  let moves=null;
+  if(cluster){
+   moves=clusterMoves(cluster.id,list[0],ref);
+   for(const d of daily.values()){const m=moves.days.get(d.day);d.joined=m?.joined||0;d.left=m?.left||0;}
+  }
+  const series=list.map(day=>{const d=daily.get(day);return {...d,spend:money(d.spend),clusterSpend:money(d.clusterSpend)};});
+  const sum=key=>series.reduce((a,d)=>a+d[key],0);
+  const t={spend:money(sum('spend')),leads:sum('leads'),clusterSpend:money(sum('clusterSpend')),clusterLeads:sum('clusterLeads'),joined:sum('joined'),left:sum('left')};
+  t.cpl=cpl(t.spend,t.leads);t.net=t.joined-t.left;
+  t.costPerJoin=cluster?cpl(t.clusterSpend,t.joined):null;
+  t.costPerNet=cluster&&t.net>0?t.clusterSpend/t.net:null;
+  t.joinsPerLead=cluster&&t.clusterLeads>0?t.joined/t.clusterLeads:null;
+  const siblings=[...mine].map(cid=>{const p=perCampaign.get(cid);return {id:cid,name:p?.name||campaigns.find(c=>c.id===cid)?.name||links.get(cid)?.name||cid,spend:money(p?.spend||0),leads:p?.leads||0};});
+  return {campaign:{id,name:found?.name||seen?.name||link?.name||id,status:found?.status||''},cluster,
+   clusters:db.prepare('SELECT id,name FROM wpp_clusters ORDER BY name COLLATE NOCASE,id').all(),
+   days,date:ref,isToday:ref===saoPauloDay(clock()),groups:moves?.groups??0,series,totals:t,siblings:cluster?siblings:[]};
  }
 
  function detail(account,id,days){
@@ -287,6 +387,9 @@ export function createGruposAPI(storage,{clock=()=>new Date()}={}){
     if(path==='/apps/grupos/api/clusters')return authJSON(clusterList(daysParam(url),dateParam(url)));
     const one=path.match(/^\/apps\/grupos\/api\/clusters\/(\d{1,9})$/);
     if(one)return authJSON(clusterDetail(Number(one[1]),daysParam(url),dateParam(url)));
+    if(path==='/apps/grupos/api/campaigns')return authJSON(await campaignList(daysParam(url),dateParam(url),url.searchParams.get('fresh')==='1'));
+    const cr=path.match(/^\/apps\/grupos\/api\/campaigns\/(\d{1,25})$/);
+    if(cr)return authJSON(await campaignReport(campaignId(cr[1]),daysParam(url),dateParam(url),url.searchParams.get('fresh')==='1'));
     if(path==='/apps/grupos/api/group')return authJSON(detail(accountId(url.searchParams.get('account')),url.searchParams.get('id')||'',daysParam(url)));
     if(path==='/apps/grupos/api/accounts')return authJSON(accounts());
    }
@@ -299,6 +402,8 @@ export function createGruposAPI(storage,{clock=()=>new Date()}={}){
     if(cm[2]==='groups'&&method==='POST')return authJSON(changeClusterGroups(id,await body()));
     if(!cm[2]&&method==='DELETE')return authJSON(removeCluster(id));
    }
+   const camp=path.match(/^\/apps\/grupos\/api\/campaigns\/(\d{1,25})\/cluster$/);
+   if(camp&&method==='POST')return authJSON(await setCampaignCluster(campaignId(camp[1]),await body()));
    const match=path.match(/^\/apps\/grupos\/api\/accounts\/(\d{1,9})(?:\/(command|rename))?$/);
    if(match){
     const id=Number(match[1]);
