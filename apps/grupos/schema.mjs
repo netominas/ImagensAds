@@ -31,6 +31,15 @@ CREATE TABLE IF NOT EXISTS wpp_daily_size (
  account_id INTEGER NOT NULL, group_id TEXT NOT NULL, day TEXT NOT NULL, size INTEGER NOT NULL,
  PRIMARY KEY(account_id, group_id, day));`;
 
+// Agrupamentos: conjuntos de grupos por nicho (ex.: "Off-grid"). Um grupo do WhatsApp pertence a no máximo um
+// agrupamento, qualquer que seja o número em que aparece. Depois serão vinculados a campanhas do Meta.
+const CLUSTERS = `
+CREATE TABLE IF NOT EXISTS wpp_clusters (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS wpp_cluster_groups (
+ group_id TEXT PRIMARY KEY, cluster_id INTEGER NOT NULL, added INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS wpp_cluster_groups_cluster ON wpp_cluster_groups(cluster_id);`;
+
 const hasColumn = (db, table, column) => db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === column);
 const tableExists = (db, table) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table);
 const needsMigration = db => tableExists(db, 'wpp_groups') && !hasColumn(db, 'wpp_groups', 'account_id');
@@ -59,4 +68,5 @@ export function ensureSchema(db) {
   db.exec(ACCOUNTS);
   if (needsMigration(db)) migrateV1(db);
   db.exec(DATA);
+  db.exec(CLUSTERS);
 }

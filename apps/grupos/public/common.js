@@ -31,11 +31,32 @@ export async function api(path, options = {}) {
 }
 export const post = (path, body) => api(path, {method: 'POST', body: JSON.stringify(body)});
 
+// Datas do relatório (calendário de São Paulo, igual ao do servidor) e pesquisa sem acento/maiúsculas.
+export const shiftDay = (day, delta) => new Date(Date.parse(day + 'T12:00:00Z') + delta * 86400000).toISOString().slice(0, 10);
+export const todaySP = () => new Date().toLocaleDateString('en-CA', {timeZone: 'America/Sao_Paulo'});
+export const dayText = day => day.split('-').reverse().join('/');
+export const whenLabel = data => data.isToday ? 'hoje' : data.date === shiftDay(todaySP(), -1) ? 'ontem' : 'em ' + dayText(data.date).slice(0, 5);
+export const plain = text => String(text).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
 // Preferências só deste navegador (filtros). Pode falhar em janela privada: nunca é essencial.
 export const prefs = {
   get(key, fallback) { try { return localStorage.getItem('grupos-' + key) ?? fallback; } catch { return fallback; } },
   set(key, value) { try { localStorage.setItem('grupos-' + key, value); } catch { /* ignora */ } },
 };
+
+export const card = (label, value, cls = '') => h('article', {class: 'card'}, h('span', {}, label), h('strong', {class: cls}, value));
+
+// Seletores "Dia" (hoje/ontem) e "Período" das páginas de agrupamentos; lembram a escolha neste navegador
+// (as mesmas chaves da lista de grupos). Devolve a função que monta a consulta da API.
+export function reportControls(reload) {
+  const days = $('days'), mode = $('day-mode');
+  const savedDays = prefs.get('days', '30'), savedMode = prefs.get('daymode', 'today');
+  days.value = ['7', '30', '90'].includes(savedDays) ? savedDays : '30';
+  mode.value = ['today', 'yesterday'].includes(savedMode) ? savedMode : 'today';
+  days.onchange = () => { prefs.set('days', days.value); reload(); };
+  mode.onchange = () => { prefs.set('daymode', mode.value); reload(); };
+  return () => `days=${days.value}${mode.value === 'yesterday' ? '&date=yesterday' : ''}`;
+}
 
 export function setupSession() {
   $('logout').onclick = async () => {

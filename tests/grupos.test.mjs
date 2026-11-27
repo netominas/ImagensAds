@@ -97,12 +97,14 @@ test('WhatsApp groups app: shared login, admin-only, private files hidden, sever
  try{
   // sem sessão
   assert.equal((await send('/apps/grupos/')).headers.get('location'),'/login');
-  for(const path of [A+'summary',A+'accounts',A+'group?account=1&id=x'])assert.equal((await send(path)).status,401);
+  for(const path of [A+'summary',A+'accounts',A+'group?account=1&id=x',A+'clusters',A+'clusters/1'])assert.equal((await send(path)).status,401);
+  for(const [path,method] of [[A+'clusters','POST'],[A+'clusters/1/rename','POST'],[A+'clusters/1/groups','POST'],[A+'clusters/1','DELETE']])assert.equal((await send(path,method,{name:'x'})).status,401,path);
   for(const [path,method] of [[A+'accounts','POST'],[A+'accounts/1/command','POST'],[A+'accounts/1/rename','POST'],[A+'accounts/1','DELETE']])assert.equal((await send(path,method,{name:'x',command:'sync'})).status,401,path);
-  for(const path of ['/apps/grupos/private/index.html','/apps/grupos/private/grupo.html','/apps/grupos/private/numeros.html','/apps/grupos/api.mjs','/apps/grupos/schema.mjs','/apps/grupos/tracker.mjs','/apps/grupos/collector/collector.mjs','/apps/grupos/collector/package.json','/runtime.env','/data/adstudio.sqlite','/apps/grupos/public/app.js'])assert.equal((await send(path)).status,404,path);
+  for(const path of ['/apps/grupos/private/index.html','/apps/grupos/private/grupo.html','/apps/grupos/private/numeros.html','/apps/grupos/private/agrupamentos.html','/apps/grupos/private/agrupamento.html','/apps/grupos/api.mjs','/apps/grupos/schema.mjs','/apps/grupos/tracker.mjs','/apps/grupos/collector/collector.mjs','/apps/grupos/collector/package.json','/runtime.env','/data/adstudio.sqlite','/apps/grupos/public/app.js'])assert.equal((await send(path)).status,404,path);
   assert.equal((await send('/apps/grupos/grupo')).headers.get('location'),'/login','group page needs a session');
   assert.equal((await send('/apps/grupos/numeros')).headers.get('location'),'/login','numbers page needs a session');
-  for(const file of ['app.js','grupo.js','numeros.js','common.js'])assert.equal((await send('/apps/grupos/'+file)).status,200,file);
+  for(const name of ['agrupamentos','agrupamento'])assert.equal((await send('/apps/grupos/'+name)).headers.get('location'),'/login',name+' page needs a session');
+  for(const file of ['app.js','grupo.js','numeros.js','agrupamentos.js','agrupamento.js','common.js'])assert.equal((await send('/apps/grupos/'+file)).status,200,file);
   assert.equal((await send('/apps/grupos/style.css')).status,200);
 
   await login(env.ADMIN_EMAIL,'grupos-test-password');
@@ -120,6 +122,12 @@ test('WhatsApp groups app: shared login, admin-only, private files hidden, sever
   assert.equal(numbersPage.status,200);const numbersHtml=await numbersPage.text();
   assert.match(numbersHtml,/Adicionar número/);assert.match(numbersHtml,/aria-current="page"><svg[^>]*>.*?<span>Números conectados/s);
   assert.equal((await send('/apps/grupos/numeros','POST')).status,405);
+  for(const name of ['agrupamentos','agrupamento']){
+   const res=await send('/apps/grupos/'+name);assert.equal(res.status,200,name);
+   const html=await res.text();assert.match(html,/aria-current="page"><svg[^>]*>.*?<span>Agrupamentos/s);assert.match(html,/href="\/apps\/grupos\/numeros"/);
+   assert.equal((await send('/apps/grupos/'+name,'POST')).status,405);
+  }
+  assert.match(page,/id="cluster-filter"/);assert.match(page,/href="\/apps\/grupos\/agrupamentos"/);
 
   // números: criar, validar, renomear
   assert.deepEqual((await json(A+'accounts')).accounts,[]);
@@ -195,6 +203,60 @@ test('WhatsApp groups app: shared login, admin-only, private files hidden, sever
   assert.equal((await send(A+'group?id=A%40g.us')).status,400,'account required');
   assert.equal((await send(A+`group?account=${id1}&id=C%40g.us`)).status,404,'group belongs to the other number');
 
+  // agrupamentos (nichos): criar, vincular grupos, filtrar, mover, renomear, excluir
+  let cl=await json(A+'clusters?days=7');
+  assert.deepEqual(cl.clusters,[]);assert.deepEqual([cl.unassigned.groups,cl.unassigned.members],[3,8],'everything starts without a cluster');
+  assert.equal((await send(A+'clusters','POST',{name:'  '})).status,400);
+  assert.equal((await send(A+'clusters','POST',{name:'x'.repeat(41)})).status,400);
+  assert.equal((await send(A+'clusters','POST',{name:'Off-grid'},'https://evil.example')).status,403);
+  const cOff=await json(A+'clusters','POST',{name:'  Off-grid   solar '});
+  assert.equal(cOff.name,'Off-grid solar');
+  assert.equal((await send(A+'clusters','POST',{name:'OFF-GRID SOLAR'})).status,409,'duplicate names rejected');
+  const cMkt=(await json(A+'clusters','POST',{name:'Mercado'})).id;
+  const G=cid=>A+`clusters/${cid}/groups`;
+  assert.equal((await send(G(cOff.id),'POST',{})).status,400,'needs add or remove');
+  assert.equal((await send(G(cOff.id),'POST',{add:'A@g.us'})).status,400);
+  assert.equal((await send(G(cOff.id),'POST',{add:[1]})).status,400);
+  assert.equal((await send(G(cOff.id),'POST',{add:['nao-existe@g.us']})).status,404);
+  assert.equal((await send(G(999),'POST',{add:['A@g.us']})).status,404);
+  assert.equal((await send(G(cOff.id),'POST',{add:['A@g.us']},'https://evil.example')).status,403);
+  assert.deepEqual(await json(G(cOff.id),'POST',{add:['A@g.us','B@g.us','A@g.us']}),{ok:true,added:2,moved:0,removed:0});
+  assert.deepEqual(await json(G(cOff.id),'POST',{add:['B@g.us']}),{ok:true,added:0,moved:0,removed:0},'adding again changes nothing');
+  const cd=await json(A+`clusters/${cOff.id}?days=7`);
+  assert.equal(cd.cluster.name,'Off-grid solar');
+  assert.equal(cd.groups.length,3,'A in both numbers plus B');assert.deepEqual([cd.totals.groups,cd.totals.members],[2,5],'shared group A counted once');
+  assert.deepEqual(cd.candidates.map(g=>[g.id,g.accounts,g.clusterId]),[['C@g.us',['Cupons'],null]]);
+  const sc=await json(A+`summary?days=7&cluster=${cOff.id}`);
+  assert.equal(sc.groups.length,3);assert.ok(sc.groups.every(g=>g.clusterId===cOff.id&&g.clusterName==='Off-grid solar'));
+  assert.deepEqual(sc.clusters.map(c=>c.name),['Mercado','Off-grid solar']);
+  assert.deepEqual((await json(A+'summary?days=7&cluster=none')).groups.map(g=>g.name),['C']);
+  assert.equal((await json(A+'summary?days=7&cluster=all')).groups.length,4);
+  for(const bad of ['abc','1.5','-1'])assert.equal((await send(A+'summary?cluster='+bad)).status,400,bad);
+  cl=await json(A+'clusters?days=7');
+  const listed=cl.clusters.find(c=>c.id===cOff.id);
+  assert.deepEqual([listed.groups,listed.members],[2,5]);
+  assert.deepEqual(cl.clusters.find(c=>c.id===cMkt),{id:cMkt,name:'Mercado',groups:0,members:0,joinedToday:0,leftToday:0,netWeek:0,netPeriod:0});
+  assert.deepEqual([cl.unassigned.groups,cl.unassigned.members],[1,3]);
+  // mover: um grupo que já pertence a outro agrupamento troca de lado
+  assert.deepEqual(await json(G(cMkt),'POST',{add:['C@g.us','A@g.us']}),{ok:true,added:1,moved:1,removed:0});
+  assert.deepEqual((await json(A+`clusters/${cOff.id}?days=7`)).groups.map(g=>g.name),['B']);
+  assert.equal((await json(A+`clusters/${cMkt}?days=7`)).totals.groups,2);
+  assert.deepEqual(await json(G(cOff.id),'POST',{remove:['B@g.us','C@g.us']}),{ok:true,added:0,moved:0,removed:1},'only removes what belongs to this cluster');
+  assert.equal((await json(A+`clusters/${cMkt}?days=7`)).groups.length,3,'removing from one cluster does not touch another');
+  // renomear e excluir
+  assert.equal((await send(A+`clusters/${cMkt}/rename`,'POST',{name:'off-grid SOLAR'})).status,409);
+  assert.equal((await send(A+`clusters/${cMkt}/rename`,'POST',{name:'  '})).status,400);
+  assert.equal((await send(A+`clusters/${cMkt}/rename`,'POST',{name:'Achadinhos de mercado'})).status,200);
+  assert.equal((await send(A+'clusters/999/rename','POST',{name:'Z'})).status,404);
+  assert.equal((await send(A+`clusters/${cMkt}`,'DELETE',undefined,'https://evil.example')).status,403);
+  assert.equal((await send(A+`clusters/${cMkt}`,'DELETE')).status,200);
+  assert.equal((await send(A+`clusters/${cMkt}`,'DELETE')).status,404);
+  assert.equal((await send(A+`clusters/${cMkt}`)).status,404);
+  assert.equal(storage.db.prepare('SELECT COUNT(*) n FROM wpp_cluster_groups WHERE cluster_id=?').get(cMkt).n,0,'deleting a cluster frees its groups');
+  assert.equal((await json(A+'summary?days=7&cluster=none')).groups.length,4,'groups survive, just without a cluster');
+  assert.equal((await send(A+'clusters?days=0')).status,400);assert.equal((await send(A+'clusters?date=2999-01-01')).status,400);
+  assert.deepEqual(await json(G(cOff.id),'POST',{add:['B@g.us']}),{ok:true,added:1,moved:0,removed:0}); // fica gravado para o teste de persistência
+
   // coletor e comandos por número
   assert.equal((await send(A+`accounts/${id1}/command`,'POST',{command:'sync'})).status,409,'collector offline');
   const beat=Math.floor(Date.now()/1000);
@@ -231,7 +293,8 @@ test('WhatsApp groups app: shared login, admin-only, private files hidden, sever
   const created=await send('/api/users','POST',{name:'Leitor',email:'leitor@example.com',password:'leitor-test-password-1',active:true,role:'reader',grants:[],whatsapp_sites:['sitea.com.br']});
   assert.equal(created.status,200);
   cookie=undefined;await login('leitor@example.com','leitor-test-password-1');
-  for(const path of ['/apps/grupos/',A+'summary',A+'accounts'])assert.equal((await send(path)).status,403,path);
+  for(const path of ['/apps/grupos/','/apps/grupos/agrupamentos','/apps/grupos/agrupamento',A+'summary',A+'accounts',A+'clusters',A+`clusters/${cOff.id}`])assert.equal((await send(path)).status,403,path);
+  assert.equal((await send(A+'clusters','POST',{name:'Intruso'})).status,403);assert.equal((await send(G(cOff.id),'POST',{add:['A@g.us']})).status,403);
   assert.equal((await send(A+'accounts','POST',{name:'Intruso'})).status,403);
   assert.equal((await send(A+`accounts/${id1}`,'DELETE')).status,403);
   cookie=admin;
@@ -243,6 +306,7 @@ test('WhatsApp groups app: shared login, admin-only, private files hidden, sever
   assert.equal(again.db.prepare('SELECT COUNT(*) n FROM wpp_events').get().n,7);
   assert.equal(again.db.prepare('SELECT COUNT(*) n FROM wpp_groups').get().n,4);
   assert.equal(again.db.prepare('SELECT COUNT(*) n FROM wpp_accounts').get().n,11);
+  assert.deepEqual(again.db.prepare('SELECT c.name,g.group_id FROM wpp_clusters c JOIN wpp_cluster_groups g ON g.cluster_id=c.id').all().map(x=>({...x})),[{name:'Off-grid solar',group_id:'B@g.us'}],'clusters persist');
   again.close();
  }finally{if(server.listening)await new Promise(r=>server.close(r));try{storage.close();}catch{}await rm(dir,{recursive:true,force:true}).catch(()=>{});}
 });

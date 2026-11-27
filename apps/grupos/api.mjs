@@ -80,7 +80,26 @@ export function createGruposAPI(storage,{clock=()=>new Date()}={}){
   return raw;
  }
 
- function summary(days,account,admin='all',ref=saoPauloDay(clock())){
+ // Agrupamento: "all" (qualquer), "none" (sem agrupamento) ou o ID de um agrupamento.
+ function clusterParam(url){
+  const raw=url.searchParams.get('cluster')??'all';
+  if(raw==='all'||raw==='none')return raw;
+  if(!/^\d{1,9}$/.test(raw))fail('Agrupamento inválido.');
+  return Number(raw);
+ }
+ // Totais de uma lista de linhas. Um grupo que aparece em mais de um número conta uma só vez (vale o registro de maior tamanho).
+ function rollup(rows){
+  const seen=new Set(),totals={groups:0,members:0,joinedToday:0,leftToday:0,netWeek:0,netPeriod:0};
+  for(const g of [...rows].sort((a,b)=>(b.size??-1)-(a.size??-1))){
+   if(seen.has(g.id))continue;seen.add(g.id);
+   totals.groups++;totals.members+=g.size??0;totals.joinedToday+=g.joinedToday;totals.leftToday+=g.leftToday;
+   totals.netWeek+=g.joinedWeek-g.leftWeek;totals.netPeriod+=g.joinedPeriod-g.leftPeriod;
+  }
+  return totals;
+ }
+
+ // Todos os grupos ativos (uma linha por grupo e número) com as contagens do dia de referência `ref`.
+ function groupRows(days,ref){
   const list=daysEnding(ref,days),today=ref,week=daysEnding(ref,7)[0],from=list[0],isToday=ref===saoPauloDay(clock());
   const rows0=db.prepare(`SELECT g.account_id,g.id,g.name,g.size,g.is_admin,a.name AS account_name
    FROM wpp_groups g JOIN wpp_accounts a ON a.id=g.account_id
@@ -97,22 +116,112 @@ export function createGruposAPI(storage,{clock=()=>new Date()}={}){
    .map(r=>[r.account_id+'|'+r.group_id,r.size]));
   const copies=new Map();
   for(const g of rows0)copies.set(g.id,(copies.get(g.id)||0)+1);
+  const clusters=db.prepare('SELECT id,name FROM wpp_clusters ORDER BY name COLLATE NOCASE,id').all();
+  const nameOf=new Map(clusters.map(c=>[c.id,c.name]));
+  const clusterOf=new Map(db.prepare('SELECT group_id,cluster_id FROM wpp_cluster_groups').all().map(r=>[r.group_id,r.cluster_id]));
   const all=rows0.map(g=>{
    const s=sums.get(g.account_id+'|'+g.id)||{};
    const size=isToday?g.size:(past.get(g.account_id+'|'+g.id)??null);
+   const clusterId=clusterOf.get(g.id)??null;
    return {accountId:g.account_id,accountName:g.account_name,id:g.id,name:g.name,size,isAdmin:!!g.is_admin,
+    clusterId,clusterName:clusterId==null?null:nameOf.get(clusterId)??null,
     shared:copies.get(g.id)>1,joinedToday:s.joined_today||0,leftToday:s.left_today||0,
     joinedWeek:s.joined_week||0,leftWeek:s.left_week||0,joinedPeriod:s.joined_period||0,leftPeriod:s.left_period||0};
   });
-  const rows=all.filter(g=>(account===null||g.accountId===account)&&(admin==='all'||g.isAdmin===(admin==='yes')));
-  // Totais não repetem um grupo que aparece em mais de um número: vale o registro de maior tamanho.
-  const seen=new Set(),totals={groups:0,members:0,joinedToday:0,leftToday:0,netWeek:0,netPeriod:0};
-  for(const g of [...rows].sort((a,b)=>(b.size??-1)-(a.size??-1))){
-   if(seen.has(g.id))continue;seen.add(g.id);
-   totals.groups++;totals.members+=g.size??0;totals.joinedToday+=g.joinedToday;totals.leftToday+=g.leftToday;
-   totals.netWeek+=g.joinedWeek-g.leftWeek;totals.netPeriod+=g.joinedPeriod-g.leftPeriod;
+  return {all,clusters,isToday};
+ }
+
+ function summary(days,account,admin='all',ref=saoPauloDay(clock()),cluster='all'){
+  const {all,clusters,isToday}=groupRows(days,ref);
+  const rows=all.filter(g=>(account===null||g.accountId===account)&&(admin==='all'||g.isAdmin===(admin==='yes'))
+   &&(cluster==='all'||(cluster==='none'?g.clusterId==null:g.clusterId===cluster)));
+  return {days,account,admin,cluster,date:ref,isToday,...accounts(),clusters,totals:rollup(rows),groups:rows};
+ }
+
+ // ---------- Agrupamentos ----------
+ const MAX_CLUSTERS=200;
+ function activeCluster(id){
+  const row=db.prepare('SELECT id,name,created FROM wpp_clusters WHERE id=?').get(id);
+  if(!row)fail('Agrupamento não encontrado.',404);
+  return row;
+ }
+ function clusterName(value,exceptId=null){
+  const name=cleanName(value);
+  const others=db.prepare('SELECT name FROM wpp_clusters WHERE id<>?').all(exceptId??-1);
+  if(others.some(c=>c.name.toLowerCase()===name.toLowerCase()))fail('Já existe um agrupamento com esse nome.',409);
+  return name;
+ }
+ function clusterList(days,ref){
+  const {all,clusters,isToday}=groupRows(days,ref);
+  const list=clusters.map(c=>({id:c.id,name:c.name,...rollup(all.filter(g=>g.clusterId===c.id))}));
+  return {days,date:ref,isToday,clusters:list,unassigned:rollup(all.filter(g=>g.clusterId==null))};
+ }
+ function clusterDetail(id,days,ref){
+  const cluster=activeCluster(id);
+  const {all,isToday}=groupRows(days,ref);
+  const groups=all.filter(g=>g.clusterId===id);
+  // Candidatos a entrar: cada grupo uma vez só (o vínculo vale para o grupo, em qualquer número em que ele apareça).
+  const byId=new Map();
+  for(const g of all){
+   if(g.clusterId===id)continue;
+   const c=byId.get(g.id);
+   if(c){c.accounts.push(g.accountName);c.size=Math.max(c.size??-1,g.size??-1);}
+   else byId.set(g.id,{id:g.id,name:g.name,size:g.size,accounts:[g.accountName],clusterId:g.clusterId,clusterName:g.clusterName});
   }
-  return {days,account,admin,date:ref,isToday,...accounts(),totals,groups:rows};
+  return {cluster:{id:cluster.id,name:cluster.name,created:cluster.created},days,date:ref,isToday,totals:rollup(groups),groups,candidates:[...byId.values()]};
+ }
+ function createCluster(data){
+  if(!data||typeof data!=='object')fail('Dados inválidos.');
+  const name=clusterName(data.name);
+  if(db.prepare('SELECT COUNT(*) AS n FROM wpp_clusters').get().n>=MAX_CLUSTERS)fail(`Limite de ${MAX_CLUSTERS} agrupamentos atingido.`,409);
+  const result=db.prepare('INSERT INTO wpp_clusters (name,created) VALUES (?,?)').run(name,nowSeconds());
+  return {id:Number(result.lastInsertRowid),name};
+ }
+ function renameCluster(id,data){
+  activeCluster(id);
+  db.prepare('UPDATE wpp_clusters SET name=? WHERE id=?').run(clusterName(data?.name,id),id);
+  return {ok:true};
+ }
+ // Excluir um agrupamento solta os grupos dele (continuam existindo, só ficam sem agrupamento).
+ function removeCluster(id){
+  activeCluster(id);
+  db.exec('BEGIN IMMEDIATE');
+  try{
+   db.prepare('DELETE FROM wpp_cluster_groups WHERE cluster_id=?').run(id);
+   db.prepare('DELETE FROM wpp_clusters WHERE id=?').run(id);
+   db.exec('COMMIT');
+  }catch(error){db.exec('ROLLBACK');throw error;}
+  return {ok:true};
+ }
+ function idList(value,label){
+  if(value===undefined)return [];
+  if(!Array.isArray(value)||value.length>500)fail(`Lista de ${label} inválida (até 500 grupos por vez).`);
+  const ids=[...new Set(value)];
+  if(ids.some(v=>typeof v!=='string'||!v||v.length>120))fail(`Lista de ${label} inválida.`);
+  return ids;
+ }
+ // Adiciona e/ou remove grupos. Um grupo que já estava em outro agrupamento é movido para este.
+ function changeClusterGroups(id,data){
+  activeCluster(id);
+  if(!data||typeof data!=='object')fail('Dados inválidos.');
+  const add=idList(data.add,'grupos a adicionar'),remove=idList(data.remove,'grupos a remover');
+  if(!add.length&&!remove.length)fail('Escolha ao menos um grupo.');
+  const known=new Set(db.prepare('SELECT DISTINCT id FROM wpp_groups').all().map(r=>r.id));
+  if(add.some(g=>!known.has(g)))fail('Grupo não encontrado.',404);
+  let added=0,moved=0,removed=0;
+  db.exec('BEGIN IMMEDIATE');
+  try{
+   for(const g of remove)removed+=Number(db.prepare('DELETE FROM wpp_cluster_groups WHERE group_id=? AND cluster_id=?').run(g,id).changes);
+   for(const g of add){
+    const before=db.prepare('SELECT cluster_id FROM wpp_cluster_groups WHERE group_id=?').get(g);
+    if(before?.cluster_id===id)continue;
+    db.prepare('INSERT INTO wpp_cluster_groups (group_id,cluster_id,added) VALUES (?,?,?) ON CONFLICT(group_id) DO UPDATE SET cluster_id=excluded.cluster_id,added=excluded.added')
+     .run(g,id,nowSeconds());
+    if(before)moved++;else added++;
+   }
+   db.exec('COMMIT');
+  }catch(error){db.exec('ROLLBACK');throw error;}
+  return {ok:true,added,moved,removed};
  }
 
  function detail(account,id,days){
@@ -174,11 +283,22 @@ export function createGruposAPI(storage,{clock=()=>new Date()}={}){
   const body=async()=>{try{return await request.json();}catch{return fail('Dados inválidos.');}};
   try{
    if(method==='GET'){
-    if(path==='/apps/grupos/api/summary')return authJSON(summary(daysParam(url),accountId(url.searchParams.get('account')??'all'),adminParam(url),dateParam(url)));
+    if(path==='/apps/grupos/api/summary')return authJSON(summary(daysParam(url),accountId(url.searchParams.get('account')??'all'),adminParam(url),dateParam(url),clusterParam(url)));
+    if(path==='/apps/grupos/api/clusters')return authJSON(clusterList(daysParam(url),dateParam(url)));
+    const one=path.match(/^\/apps\/grupos\/api\/clusters\/(\d{1,9})$/);
+    if(one)return authJSON(clusterDetail(Number(one[1]),daysParam(url),dateParam(url)));
     if(path==='/apps/grupos/api/group')return authJSON(detail(accountId(url.searchParams.get('account')),url.searchParams.get('id')||'',daysParam(url)));
     if(path==='/apps/grupos/api/accounts')return authJSON(accounts());
    }
    if(path==='/apps/grupos/api/accounts'&&method==='POST')return authJSON(createAccount(await body()),201);
+   if(path==='/apps/grupos/api/clusters'&&method==='POST')return authJSON(createCluster(await body()),201);
+   const cm=path.match(/^\/apps\/grupos\/api\/clusters\/(\d{1,9})(?:\/(rename|groups))?$/);
+   if(cm){
+    const id=Number(cm[1]);
+    if(cm[2]==='rename'&&method==='POST')return authJSON(renameCluster(id,await body()));
+    if(cm[2]==='groups'&&method==='POST')return authJSON(changeClusterGroups(id,await body()));
+    if(!cm[2]&&method==='DELETE')return authJSON(removeCluster(id));
+   }
    const match=path.match(/^\/apps\/grupos\/api\/accounts\/(\d{1,9})(?:\/(command|rename))?$/);
    if(match){
     const id=Number(match[1]);

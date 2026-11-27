@@ -103,3 +103,17 @@
  .side a{white-space:nowrap}
  .grupos-shell>main.grupos{padding:24px 16px 36px}
 }
+/* Agrupamentos */
+.grupos .inline-form{display:flex;gap:10px;flex-wrap:wrap}
+.grupos .inline-form input{flex:1 1 260px;max-width:420px;font:inherit;padding:10px 14px;border:1px solid #e3dfeb;border-radius:10px;background:#fff;color:#252337;min-width:0}
+.grupos .inline-form input:focus,.grupos .check input:focus-visible{outline:2px solid #7854d6;outline-offset:1px}
+.grupos .head-actions{margin-top:12px}
+.grupos .head-actions button,.grupos .small-btn{padding:6px 12px;font-size:13px;border-radius:9px}
+.grupos td.soft,.grupos a.group-link.soft{color:#827a91;font-weight:500}
+.grupos th.check,.grupos td.check{width:44px;text-align:center}
+.grupos td.id{width:60px}
+.grupos .bulk{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:14px}
+.grupos .bulk .small{margin:0;flex:1 1 260px}
+.grupos td.empty{text-align:center!important}
+.grupos #clusters-table th:nth-child(2),.grupos #clusters-table td:nth-child(2),.grupos table.pick th:nth-child(2),.grupos table.pick td:nth-child(2){text-align:left}
+.grupos .table-wrap{position:relative}

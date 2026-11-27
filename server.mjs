@@ -27,7 +27,7 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
   const allowed=new Set(['index.html','login.js','login.css','access.js','activate.html','activate.js','favicon.svg','dashboard.js','dashboard.css','users.js','users.css']);
   const creativeAssets=new Set(['app.js','core.js','styles.css','copy.js','copy-core.js','copy.css']);
   const financeAssets=new Set(['app.js','fixed.js','catalog.js','filters.js','navigation.js','colors.js','style.css']);
-  const gruposAssets=new Set(['app.js','grupo.js','numeros.js','common.js','style.css']);
+  const gruposAssets=new Set(['app.js','grupo.js','numeros.js','agrupamentos.js','agrupamento.js','common.js','style.css']);
   const financeReadPaths=new Set(['/apps/financas/api/fixed','/apps/financas/api/expenses']);
   const publicReader=new Set(['/login','/index.html','/login.js','/login.css','/access.js','/favicon.svg','/api/session','/api/logout','/api/login','/.netlify/functions/login','/.netlify/functions/logout','/.netlify/functions/session']);
   const googleAssets=new Set(['app.js','creator.js','style.css','creator.css','session.js']);
@@ -75,12 +75,12 @@ export function createAppServer({env=process.env,authStore=memoryStore(),jobStor
         if(session?.role!=='admin'&&!(financeReader&&req.method==='GET'&&financeReadPaths.has(originalPath)))return send(authJSON({error:'Acesso não permitido.'},403));
         if(!financeAPI)return send(authJSON({error:'Persistência indisponível.'},503));
       }
-      if(['/apps/grupos','/apps/grupos/','/apps/grupos/grupo','/apps/grupos/numeros'].includes(originalPath)){
+      if(['/apps/grupos','/apps/grupos/','/apps/grupos/grupo','/apps/grupos/numeros','/apps/grupos/agrupamentos','/apps/grupos/agrupamento'].includes(originalPath)){
         if(!session)return send(redirect('/login'));
         if(session.role!=='admin')return send(authJSON({error:'Acesso não permitido.'},403));
         if(!['GET','HEAD'].includes(req.method))return send(authJSON({error:'Método não permitido.'},405));
         if(originalPath==='/apps/grupos')return send(redirect('/apps/grupos/'));
-        return send(new Response(await readFile(new URL({'/apps/grupos/grupo':'./apps/grupos/private/grupo.html','/apps/grupos/numeros':'./apps/grupos/private/numeros.html'}[originalPath]||'./apps/grupos/private/index.html',import.meta.url)),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store','Vary':'Cookie'}}));
+        return send(new Response(await readFile(new URL({'/apps/grupos/grupo':'./apps/grupos/private/grupo.html','/apps/grupos/numeros':'./apps/grupos/private/numeros.html','/apps/grupos/agrupamentos':'./apps/grupos/private/agrupamentos.html','/apps/grupos/agrupamento':'./apps/grupos/private/agrupamento.html'}[originalPath]||'./apps/grupos/private/index.html',import.meta.url)),{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store','Vary':'Cookie'}}));
       }
       const isGrupos=originalPath.startsWith('/apps/grupos/api/');
       if(isGrupos){
